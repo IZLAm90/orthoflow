@@ -1,5 +1,6 @@
 import random
 import string
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -32,7 +33,12 @@ PHASE_FOR_STATUS = {
 def create_order(payload: schemas.OrderCreate, db: Session = Depends(get_db)):
     if db.get(models.Patient, payload.patient_id) is None:
         raise HTTPException(status_code=404, detail="Patient not found")
-    order = models.Order(**payload.model_dump(), ref=_gen_ref(db))
+    data = payload.model_dump()
+    if data.get("delivery_on") is None:
+        product = db.get(models.Product, payload.product_id) if payload.product_id else None
+        delivery_days = product.delivery_start_days if product else 3
+        data["delivery_on"] = datetime.utcnow() + timedelta(days=delivery_days)
+    order = models.Order(**data, ref=_gen_ref(db))
     db.add(order)
     db.flush()
     db.add(models.OrderPhase(order_id=order.id, title="Order Placed", details="Order received and awaiting treatment plan review"))

@@ -3,6 +3,7 @@ import { api } from '../api'
 
 export interface Product {
   id:string; name:string; provider?:string|null; price:number; rating:number; description?:string|null
+  delivery_start_days:number
   has_odontogram:boolean; has_treatment_plan:boolean; has_upload:boolean
   has_upload_boxes:boolean; has_upload_boxes_optional:boolean; has_upload_optional:boolean
   has_delivery_center:boolean; has_doctor_optional:boolean; has_consent:boolean; has_fases:boolean

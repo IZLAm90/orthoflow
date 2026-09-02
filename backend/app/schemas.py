@@ -145,6 +145,7 @@ class ProductCreate(BaseModel):
     price: float = 0
     rating: float = 0
     description: Optional[str] = None
+    delivery_start_days: int = 3
     has_odontogram: bool = True
     has_treatment_plan: bool = True
     has_upload: bool = True
@@ -167,6 +168,7 @@ class ProductUpdate(BaseModel):
     price: Optional[float] = None
     rating: Optional[float] = None
     description: Optional[str] = None
+    delivery_start_days: Optional[int] = None
     has_odontogram: Optional[bool] = None
     has_treatment_plan: Optional[bool] = None
     has_upload: Optional[bool] = None
@@ -190,6 +192,7 @@ class ProductRead(ORMModel):
     price: float
     rating: float
     description: Optional[str]
+    delivery_start_days: int
     has_odontogram: bool
     has_treatment_plan: bool
     has_upload: bool

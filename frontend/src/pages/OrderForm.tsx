@@ -126,6 +126,8 @@ export default function OrderForm() {
   }
 
   const total = (product?.price||50) + (form.cbctEnabled ? 5 : 0)
+  const estimatedDelivery = new Date(Date.now() + (product?.delivery_start_days ?? 3) * 86400000)
+  const estimatedDeliveryLabel = estimatedDelivery.toLocaleDateString('en-US', { weekday:'short', day:'numeric', month:'long', year:'numeric' })
 
   const handleSubmit = async () => {
     if(!form.patientId) return toast.error('Please select a patient')
@@ -436,7 +438,7 @@ export default function OrderForm() {
           <div className="card p-5 sticky top-4 space-y-4">
             <p className="font-semibold text-ink-900">Order Details</p>
             <div className="text-sm space-y-1">
-              <p className="text-ink-500">Delivery on <span className="text-primary-600 font-semibold">Thu 25 June 2026 - 14:41</span></p>
+              <p className="text-ink-500">Delivery on <span className="text-primary-600 font-semibold">{estimatedDeliveryLabel}</span></p>
               <p className="text-ink-500">Order by <span className="text-primary-600 font-semibold">{doctors.find(d=>d.id===form.doctorId)?.name||'—'}</span></p>
             </div>
             <div className="divider"/>

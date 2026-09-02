@@ -84,6 +84,7 @@ class Product(Base):
     price: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     rating: Mapped[float] = mapped_column(Numeric(2, 1), default=0)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivery_start_days: Mapped[int] = mapped_column(Integer, default=3)
 
     # Feature flags gate which sections of the order form render for this product,
     # mirroring the reference platform's config-driven order form.
