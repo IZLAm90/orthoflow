@@ -18,6 +18,32 @@ def _gen_ref(db: Session) -> str:
             return ref
 
 
+def _gen_lab_ref(db: Session) -> str:
+    year = datetime.utcnow().year
+    while True:
+        ref = f"LOD-{year}-" + "".join(random.choices(string.digits, k=3))
+        if not db.query(models.LabOrder).filter(models.LabOrder.ref == ref).first():
+            return ref
+
+
+def _ensure_lab_order(db: Session, order: models.Order) -> None:
+    """A manufacturing-requesting order gets a linked LabOrder, mirroring how
+    the reference platform's manufacturing step feeds its own fulfillment
+    tracking. Only ever creates one per order."""
+    if not order.want_manufacturing:
+        return
+    if db.query(models.LabOrder).filter(models.LabOrder.order_id == order.id).first():
+        return
+    lab_name = order.product.provider if order.product else order.material
+    db.add(models.LabOrder(
+        ref=_gen_lab_ref(db),
+        order_id=order.id,
+        patient_id=order.patient_id,
+        lab=lab_name,
+        eta=order.delivery_on.date() if order.delivery_on else None,
+    ))
+
+
 @router.get("", response_model=list[schemas.OrderRead])
 def list_orders(db: Session = Depends(get_db)):
     return db.query(models.Order).order_by(models.Order.requested_at.desc()).all()
@@ -42,6 +68,7 @@ def create_order(payload: schemas.OrderCreate, db: Session = Depends(get_db)):
     db.add(order)
     db.flush()
     db.add(models.OrderPhase(order_id=order.id, title="Order Placed", details="Order received and awaiting treatment plan review"))
+    _ensure_lab_order(db, order)
     db.commit()
     db.refresh(order)
     return order
@@ -67,6 +94,7 @@ def update_order(order_id: str, payload: schemas.OrderUpdate, db: Session = Depe
     if new_status and new_status in PHASE_FOR_STATUS:
         title, details = PHASE_FOR_STATUS[new_status]
         db.add(models.OrderPhase(order_id=order.id, title=title, details=details))
+    _ensure_lab_order(db, order)
     db.commit()
     db.refresh(order)
     return order

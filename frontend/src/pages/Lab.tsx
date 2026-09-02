@@ -53,7 +53,7 @@ export default function LabPage(){
               <td className="px-5 py-3 font-mono text-sm text-primary-700 font-semibold">{o.ref}</td>
               <td className="px-5 py-3">
                 <p className="text-sm font-medium text-ink-900">{name}</p>
-                <p className="text-xs text-ink-400 font-mono">{o.case_number}</p>
+                <p className="text-xs text-ink-400 font-mono">{o.case_number || o.order_ref || '—'}</p>
               </td>
               <td className="px-5 py-3 text-sm text-ink-700">{o.lab||'—'}</td>
               <td className="px-5 py-3"><Badge variant={s.variant} dot>{s.label}</Badge></td>

@@ -420,7 +420,8 @@ class InvoiceRead(ORMModel):
 # ---------- LabOrder ----------
 
 class LabOrderCreate(BaseModel):
-    case_id: str
+    case_id: Optional[str] = None
+    order_id: Optional[str] = None
     patient_id: str
     lab: Optional[str] = None
     status: str = "pending"
@@ -438,8 +439,10 @@ class LabOrderUpdate(BaseModel):
 class LabOrderRead(ORMModel):
     id: str
     ref: str
-    case_id: str
+    case_id: Optional[str]
     case_number: Optional[str] = None
+    order_id: Optional[str]
+    order_ref: Optional[str] = None
     patient_id: str
     patient: Optional[PatientRead] = None
     lab: Optional[str]

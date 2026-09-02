@@ -279,7 +279,11 @@ class LabOrder(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_id)
     ref: Mapped[str] = mapped_column(String, unique=True, nullable=False)
-    case_id: Mapped[str] = mapped_column(ForeignKey("cases.id"), nullable=False)
+    # A lab order originates from either the Cases flow (case_id) or the
+    # Products/Orders flow (order_id, auto-created when an order requests
+    # manufacturing) — exactly one is expected to be set.
+    case_id: Mapped[str | None] = mapped_column(ForeignKey("cases.id"), nullable=True)
+    order_id: Mapped[str | None] = mapped_column(ForeignKey("orders.id"), nullable=True)
     patient_id: Mapped[str] = mapped_column(ForeignKey("patients.id"), nullable=False)
     lab: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(
@@ -290,7 +294,8 @@ class LabOrder(Base):
     eta: Mapped[date | None] = mapped_column(Date, nullable=True)
     stages: Mapped[int] = mapped_column(Integer, default=1)
 
-    case: Mapped["Case"] = relationship()
+    case: Mapped["Case | None"] = relationship()
+    order: Mapped["Order | None"] = relationship()
     patient: Mapped["Patient"] = relationship()
 
 

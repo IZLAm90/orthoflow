@@ -22,6 +22,7 @@ def _gen_ref(db: Session) -> str:
 def _to_read(lab_order: models.LabOrder) -> schemas.LabOrderRead:
     read = schemas.LabOrderRead.model_validate(lab_order)
     read.case_number = lab_order.case.case_number if lab_order.case else None
+    read.order_ref = lab_order.order.ref if lab_order.order else None
     return read
 
 
@@ -33,8 +34,12 @@ def list_lab_orders(db: Session = Depends(get_db)):
 
 @router.post("", response_model=schemas.LabOrderRead)
 def create_lab_order(payload: schemas.LabOrderCreate, db: Session = Depends(get_db)):
-    if db.get(models.Case, payload.case_id) is None:
+    if not payload.case_id and not payload.order_id:
+        raise HTTPException(status_code=400, detail="Either case_id or order_id is required")
+    if payload.case_id and db.get(models.Case, payload.case_id) is None:
         raise HTTPException(status_code=404, detail="Case not found")
+    if payload.order_id and db.get(models.Order, payload.order_id) is None:
+        raise HTTPException(status_code=404, detail="Order not found")
     if db.get(models.Patient, payload.patient_id) is None:
         raise HTTPException(status_code=404, detail="Patient not found")
     lab_order = models.LabOrder(**payload.model_dump(), ref=_gen_ref(db))
