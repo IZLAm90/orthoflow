@@ -1,27 +1,45 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft,CheckCircle,Upload,Plus } from 'lucide-react'
-import { Avatar,Button,Badge } from '../components/ui'
+import toast from 'react-hot-toast'
+import { Avatar,Button,Badge,Spinner } from '../components/ui'
 import { cn } from '../lib/utils'
+import { usePatients } from '../lib/queries/patients'
+import { useCreateCase, useUploadScan } from '../lib/queries/cases'
 
-const PATIENTS=[
-  {id:'p1',name:'Sarah Mitchell'},
-  {id:'p2',name:'James Okonkwo'},
-  {id:'p3',name:'Amara Hassan'},
-  {id:'p4',name:'David Park'},
-]
 const STEPS=['Patient','Case details','Upload scans','Confirm']
 
 export default function NewCase(){
   const navigate=useNavigate()
+  const { data:patients=[], isLoading:patientsLoading } = usePatients()
+  const createCase = useCreateCase()
+  const uploadScan = useUploadScan()
   const [step,setStep]=useState(0)
   const [form,setForm]=useState({patientId:'',treatmentType:'aligners',priority:'normal',chiefComplaint:'',scans:[] as File[]})
   const [dragging,setDragging]=useState(false)
+  const [submitting,setSubmitting]=useState(false)
   const upd=(k:string,v:any)=>setForm(f=>({...f,[k]:v}))
-  const sel=PATIENTS.find(p=>p.id===form.patientId)
+  const sel=patients.find(p=>p.id===form.patientId)
   const handleFiles=(files:FileList|null)=>{
     if(!files) return
     upd('scans',[...form.scans,...Array.from(files).filter(f=>f.name.match(/\.(stl|obj|ply)$/i))])
+  }
+  const handleCreate=async()=>{
+    setSubmitting(true)
+    try{
+      const created = await createCase.mutateAsync({
+        patient_id: form.patientId, treatment_type: form.treatmentType,
+        priority: form.priority, chief_complaint: form.chiefComplaint||undefined,
+      })
+      for(let i=0;i<form.scans.length;i++){
+        await uploadScan.mutateAsync({ caseId: created.id, file: form.scans[i], type: i%2===0?'upper':'lower' })
+      }
+      toast.success('Case created')
+      navigate(`/cases/${created.id}`)
+    }catch{
+      toast.error('Failed to create case')
+      setSubmitting(false)
+    }
   }
   return <div className="max-w-2xl mx-auto animate-fade-in">
     <div className="flex items-center gap-3 mb-6">
@@ -44,16 +62,19 @@ export default function NewCase(){
     <div className="card p-6 space-y-5">
       {step===0&&<>
         <h3 className="font-semibold text-ink-900">Select patient</h3>
+        {patientsLoading?<div className="flex justify-center py-8"><Spinner/></div>:
         <div className="space-y-2">
-          {PATIENTS.map(p=>(
-            <button key={p.id} onClick={()=>upd('patientId',p.id)} className={cn('w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left',form.patientId===p.id?'border-primary-400 bg-primary-50':'border-surface-200 hover:border-primary-300')}>
-              <Avatar name={p.name} size="sm"/>
-              <span className="text-sm font-medium text-ink-900 flex-1">{p.name}</span>
+          {patients.map(p=>{
+            const name = `${p.first_name} ${p.last_name}`
+            return <button key={p.id} onClick={()=>upd('patientId',p.id)} className={cn('w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left',form.patientId===p.id?'border-primary-400 bg-primary-50':'border-surface-200 hover:border-primary-300')}>
+              <Avatar name={name} size="sm"/>
+              <span className="text-sm font-medium text-ink-900 flex-1">{name}</span>
               {form.patientId===p.id&&<CheckCircle size={16} className="text-primary-600"/>}
             </button>
-          ))}
-        </div>
-        <Button variant="secondary" size="sm" leftIcon={<Plus size={13}/>}>Add new patient</Button>
+          })}
+          {patients.length===0 && <p className="text-sm text-ink-400">No patients yet — add one first.</p>}
+        </div>}
+        <Button variant="secondary" size="sm" leftIcon={<Plus size={13}/>} onClick={()=>navigate('/patients')}>Add new patient</Button>
       </>}
       {step===1&&<>
         <h3 className="font-semibold text-ink-900">Case details</h3>
@@ -110,7 +131,7 @@ export default function NewCase(){
       {step===3&&<>
         <h3 className="font-semibold text-ink-900">Confirm & create</h3>
         <div className="space-y-3 text-sm">
-          {([['Patient',sel?.name||'—'],['Treatment',form.treatmentType],['Priority',form.priority],['Scans',`${form.scans.length} file(s)`]] as [string,string][]).map(([l,v])=>(
+          {([['Patient',sel?`${sel.first_name} ${sel.last_name}`:'—'],['Treatment',form.treatmentType],['Priority',form.priority],['Scans',`${form.scans.length} file(s)`]] as [string,string][]).map(([l,v])=>(
             <div key={l} className="flex justify-between py-2 border-b border-surface-100">
               <span className="text-ink-500">{l}</span>
               <span className="font-medium text-ink-900 capitalize">{v}</span>
@@ -123,10 +144,10 @@ export default function NewCase(){
       </>}
     </div>
     <div className="flex justify-between mt-4">
-      <Button variant="secondary" onClick={()=>step===0?navigate('/cases'):setStep(step-1)}>
+      <Button variant="secondary" onClick={()=>step===0?navigate('/cases'):setStep(step-1)} disabled={submitting}>
         {step===0?'Cancel':'Back'}
       </Button>
-      <Button variant="primary" onClick={()=>step===STEPS.length-1?navigate('/cases/1'):setStep(step+1)} disabled={step===0&&!form.patientId}>
+      <Button variant="primary" loading={submitting} onClick={()=>step===STEPS.length-1?handleCreate():setStep(step+1)} disabled={step===0&&!form.patientId}>
         {step===STEPS.length-1?'Create case':'Continue'}
       </Button>
     </div>

@@ -1,30 +1,40 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus,Search,ArrowRight } from 'lucide-react'
-import { Badge,Avatar,Modal,Button } from '../components/ui'
+import toast from 'react-hot-toast'
+import { Badge,Avatar,Modal,Button,Spinner,EmptyState } from '../components/ui'
 import { formatDate } from '../lib/utils'
-
-const PATIENTS=[
-  {id:'p1',firstName:'Sarah',lastName:'Mitchell',email:'sarah.mitchell@email.com',phone:'+1 555-123-4567',dateOfBirth:'1990-03-12',gender:'female',casesCount:2,createdAt:'2026-01-10T00:00:00Z'},
-  {id:'p2',firstName:'James',lastName:'Okonkwo',email:'james.okonkwo@email.com',phone:'+1 555-234-5678',dateOfBirth:'1985-07-22',gender:'male',casesCount:1,createdAt:'2026-02-14T00:00:00Z'},
-  {id:'p3',firstName:'Amara',lastName:'Hassan',email:'amara.hassan@email.com',phone:'+1 555-345-6789',dateOfBirth:'2000-11-05',gender:'female',casesCount:1,createdAt:'2026-03-01T00:00:00Z'},
-  {id:'p4',firstName:'David',lastName:'Park',email:'david.park@email.com',phone:'+1 555-456-7890',dateOfBirth:'1992-09-18',gender:'male',casesCount:3,createdAt:'2026-04-10T00:00:00Z'},
-  {id:'p5',firstName:'Elena',lastName:'Rossi',email:'elena.rossi@email.com',phone:'+1 555-567-8901',dateOfBirth:'1988-02-28',gender:'female',casesCount:1,createdAt:'2026-01-20T00:00:00Z'},
-]
+import { usePatients, useCreatePatient } from '../lib/queries/patients'
 
 export default function PatientsPage(){
   const navigate=useNavigate()
+  const { data:patients=[], isLoading } = usePatients()
+  const createPatient = useCreatePatient()
   const [search,setSearch]=useState('')
   const [open,setOpen]=useState(false)
   const [form,setForm]=useState({firstName:'',lastName:'',email:'',phone:'',dateOfBirth:'',gender:'female'})
-  const filtered=PATIENTS.filter(p=>{
+  const filtered=patients.filter(p=>{
     const q=search.toLowerCase()
-    return !q||`${p.firstName} ${p.lastName}`.toLowerCase().includes(q)||p.email.toLowerCase().includes(q)
+    return !q||`${p.first_name} ${p.last_name}`.toLowerCase().includes(q)||(p.email||'').toLowerCase().includes(q)
   })
   const upd=(k:string,v:string)=>setForm(f=>({...f,[k]:v}))
+  const handleCreate=async()=>{
+    if(!form.firstName||!form.lastName) return toast.error('First and last name are required')
+    try{
+      await createPatient.mutateAsync({
+        first_name:form.firstName, last_name:form.lastName, email:form.email||undefined,
+        phone:form.phone||undefined, date_of_birth:form.dateOfBirth||undefined, gender:form.gender,
+      })
+      toast.success('Patient created')
+      setOpen(false)
+      setForm({firstName:'',lastName:'',email:'',phone:'',dateOfBirth:'',gender:'female'})
+    }catch{
+      toast.error('Failed to create patient')
+    }
+  }
   return <div className="space-y-4 animate-fade-in">
     <div className="flex items-center justify-between">
-      <div><h2 className="section-title">Patients</h2><p className="text-muted">{PATIENTS.length} total</p></div>
+      <div><h2 className="section-title">Patients</h2><p className="text-muted">{patients.length} total</p></div>
       <button className="btn-primary gap-2" onClick={()=>setOpen(true)}><Plus size={16}/>Add patient</button>
     </div>
     <div className="card p-3">
@@ -34,6 +44,9 @@ export default function PatientsPage(){
       </div>
     </div>
     <div className="card overflow-hidden">
+      {isLoading?<div className="flex justify-center py-16"><Spinner/></div>:filtered.length===0?(
+        <EmptyState title="No patients yet" description="Add your first patient to get started."/>
+      ):(
       <table className="w-full">
         <thead>
           <tr className="bg-surface-50 text-xs font-medium text-ink-400 uppercase tracking-wide">
@@ -50,25 +63,26 @@ export default function PatientsPage(){
             <tr key={p.id} className="table-row cursor-pointer" onClick={()=>navigate(`/patients/${p.id}`)}>
               <td className="px-5 py-3">
                 <div className="flex items-center gap-3">
-                  <Avatar name={`${p.firstName} ${p.lastName}`} size="sm"/>
+                  <Avatar name={`${p.first_name} ${p.last_name}`} size="sm"/>
                   <div>
-                    <p className="text-sm font-semibold text-ink-900">{p.firstName} {p.lastName}</p>
+                    <p className="text-sm font-semibold text-ink-900">{p.first_name} {p.last_name}</p>
                     <p className="text-xs text-ink-400 capitalize">{p.gender}</p>
                   </div>
                 </div>
               </td>
               <td className="px-5 py-3"><p className="text-sm text-ink-700">{p.email}</p><p className="text-xs text-ink-400">{p.phone}</p></td>
-              <td className="px-5 py-3 text-sm text-ink-600">{formatDate(p.dateOfBirth)}</td>
-              <td className="px-5 py-3"><Badge variant={p.casesCount>0?'blue':'gray'}>{p.casesCount} case{p.casesCount!==1?'s':''}</Badge></td>
-              <td className="px-5 py-3 text-sm text-ink-400">{formatDate(p.createdAt)}</td>
+              <td className="px-5 py-3 text-sm text-ink-600">{p.date_of_birth?formatDate(p.date_of_birth):'—'}</td>
+              <td className="px-5 py-3"><Badge variant={p.cases_count>0?'blue':'gray'}>{p.cases_count} case{p.cases_count!==1?'s':''}</Badge></td>
+              <td className="px-5 py-3 text-sm text-ink-400">{formatDate(p.created_at)}</td>
               <td className="px-5 py-3"><button className="btn-ghost btn-sm">View <ArrowRight size={12}/></button></td>
             </tr>
           ))}
         </tbody>
       </table>
+      )}
     </div>
     <Modal open={open} onClose={()=>setOpen(false)} title="Add new patient" size="lg"
-      footer={<><Button variant="secondary" onClick={()=>setOpen(false)}>Cancel</Button><Button variant="primary">Create patient</Button></>}>
+      footer={<><Button variant="secondary" onClick={()=>setOpen(false)}>Cancel</Button><Button variant="primary" loading={createPatient.isPending} onClick={handleCreate}>Create patient</Button></>}>
       <div className="grid grid-cols-2 gap-4">
         {([['First name','firstName','Sarah'],['Last name','lastName','Mitchell'],['Email','email','sarah@example.com'],['Phone','phone','+1 555-000-0000']] as [string,string,string][]).map(([label,key,ph])=>(
           <div key={key}>

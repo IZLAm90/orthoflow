@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { User, Lock, CreditCard, Truck, Stethoscope, Bell, Save, Plus, Trash2, Eye, EyeOff } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { useAuthStore } from '../stores/authStore'
-import { Avatar, Button } from '../components/ui'
+import { Avatar, Button, Spinner } from '../components/ui'
 import { cn } from '../lib/utils'
+import { useDoctors, useCreateDoctor, useDeleteDoctor } from '../lib/queries/doctors'
+import { useDeliveryCenters, useCreateDeliveryCenter, useDeleteDeliveryCenter } from '../lib/queries/deliveryCenters'
 
 const SECTIONS = [
   { id:'general',   icon:User,        label:'General' },
@@ -31,15 +34,15 @@ export default function SettingsPage() {
 
   const [passwords, setPasswords] = useState({ current:'', new:'', confirm:'' })
 
-  const [doctors, setDoctors] = useState([
-    { id:'d1', name:'Dr. Ali Dabla', email:'ali.dabla@clinic.com', phone:'+966 500 000 001' },
-    { id:'d2', name:'Dr. Chen Wei', email:'chen.wei@clinic.com', phone:'+966 500 000 002' },
-  ])
+  const { data:doctors=[], isLoading:doctorsLoading } = useDoctors()
+  const createDoctor = useCreateDoctor()
+  const deleteDoctor = useDeleteDoctor()
+  const [newDoctor, setNewDoctor] = useState<{name:string;email:string;phone:string}|null>(null)
 
-  const [deliveryCenters, setDeliveryCenters] = useState([
-    { id:'dc1', name:'Main Clinic', address:'123 Medical St, Cairo, Egypt', phone:'+20 100 000 0001' },
-    { id:'dc2', name:'Branch Office', address:'456 Health Ave, Giza, Egypt', phone:'+20 100 000 0002' },
-  ])
+  const { data:deliveryCenters=[], isLoading:centersLoading } = useDeliveryCenters()
+  const createCenter = useCreateDeliveryCenter()
+  const deleteCenter = useDeleteDeliveryCenter()
+  const [newCenter, setNewCenter] = useState<{name:string;address:string;phone:string}|null>(null)
 
   const [notifications, setNotifications] = useState({
     orderPlaced: true, orderDelivered: true, planApproved: true,
@@ -223,30 +226,42 @@ export default function SettingsPage() {
                   <Truck size={20} className="text-primary-600"/>
                   <h3 className="text-lg font-semibold text-ink-900">Delivery centers</h3>
                 </div>
-                <Button variant="primary" size="sm" leftIcon={<Plus size={14}/>} onClick={()=>setDeliveryCenters(d=>[...d,{id:`dc${Date.now()}`,name:'',address:'',phone:''}])}>
+                <Button variant="primary" size="sm" leftIcon={<Plus size={14}/>} onClick={()=>setNewCenter({name:'',address:'',phone:''})}>
                   Add center
                 </Button>
               </div>
+              {centersLoading?<div className="flex justify-center py-10"><Spinner/></div>:
               <div className="space-y-4">
                 {deliveryCenters.map((dc,i)=>(
                   <div key={dc.id} className="border border-surface-200 rounded-xl p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-semibold text-ink-700">Center {i+1}</p>
-                      <button onClick={()=>setDeliveryCenters(d=>d.filter(x=>x.id!==dc.id))} className="text-red-400 hover:text-red-600 p-1"><Trash2 size={14}/></button>
+                      <button onClick={()=>deleteCenter.mutate(dc.id)} className="text-red-400 hover:text-red-600 p-1"><Trash2 size={14}/></button>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div><label className="label">Name</label><input className="input" defaultValue={dc.name} placeholder="Main Clinic"/></div>
-                      <div><label className="label">Phone</label><input className="input" defaultValue={dc.phone} placeholder="+1 555-000-0000"/></div>
-                      <div className="col-span-2"><label className="label">Address</label><input className="input" defaultValue={dc.address} placeholder="123 Medical St, Cairo, Egypt"/></div>
+                      <div><label className="label">Name</label><input className="input" defaultValue={dc.name} disabled placeholder="Main Clinic"/></div>
+                      <div><label className="label">Phone</label><input className="input" defaultValue={dc.phone||''} disabled placeholder="+1 555-000-0000"/></div>
+                      <div className="col-span-2"><label className="label">Address</label><input className="input" defaultValue={dc.address||''} disabled placeholder="123 Medical St, Cairo, Egypt"/></div>
                     </div>
                   </div>
                 ))}
-              </div>
-              <div className="flex justify-end">
-                <Button variant="primary" leftIcon={<Save size={15}/>} onClick={handleSave}>
-                  {saved?'✓ Saved!':'Save Changes'}
-                </Button>
-              </div>
+                {newCenter && (
+                  <div className="border border-primary-300 bg-primary-50/30 rounded-xl p-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><label className="label">Name</label><input className="input" value={newCenter.name} onChange={e=>setNewCenter(c=>c&&{...c,name:e.target.value})} placeholder="Main Clinic"/></div>
+                      <div><label className="label">Phone</label><input className="input" value={newCenter.phone} onChange={e=>setNewCenter(c=>c&&{...c,phone:e.target.value})} placeholder="+1 555-000-0000"/></div>
+                      <div className="col-span-2"><label className="label">Address</label><input className="input" value={newCenter.address} onChange={e=>setNewCenter(c=>c&&{...c,address:e.target.value})} placeholder="123 Medical St, Cairo, Egypt"/></div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="secondary" size="sm" onClick={()=>setNewCenter(null)}>Cancel</Button>
+                      <Button variant="primary" size="sm" loading={createCenter.isPending} onClick={async()=>{
+                        if(!newCenter.name) return toast.error('Name is required')
+                        await createCenter.mutateAsync(newCenter); setNewCenter(null); toast.success('Delivery center added')
+                      }}>Save</Button>
+                    </div>
+                  </div>
+                )}
+              </div>}
             </div>
           )}
 
@@ -258,10 +273,11 @@ export default function SettingsPage() {
                   <Stethoscope size={20} className="text-primary-600"/>
                   <h3 className="text-lg font-semibold text-ink-900">Doctors</h3>
                 </div>
-                <Button variant="primary" size="sm" leftIcon={<Plus size={14}/>} onClick={()=>setDoctors(d=>[...d,{id:`d${Date.now()}`,name:'',email:'',phone:''}])}>
+                <Button variant="primary" size="sm" leftIcon={<Plus size={14}/>} onClick={()=>setNewDoctor({name:'',email:'',phone:''})}>
                   Add doctor
                 </Button>
               </div>
+              {doctorsLoading?<div className="flex justify-center py-10"><Spinner/></div>:
               <div className="space-y-4">
                 {doctors.map((doc,i)=>(
                   <div key={doc.id} className="border border-surface-200 rounded-xl p-4 space-y-3">
@@ -270,21 +286,32 @@ export default function SettingsPage() {
                         <Avatar name={doc.name||'DR'} size="sm"/>
                         <p className="text-sm font-semibold text-ink-700">{doc.name||`Doctor ${i+1}`}</p>
                       </div>
-                      <button onClick={()=>setDoctors(d=>d.filter(x=>x.id!==doc.id))} className="text-red-400 hover:text-red-600 p-1"><Trash2 size={14}/></button>
+                      <button onClick={()=>deleteDoctor.mutate(doc.id)} className="text-red-400 hover:text-red-600 p-1"><Trash2 size={14}/></button>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div><label className="label">Full name</label><input className="input" defaultValue={doc.name} placeholder="Dr. John Smith"/></div>
-                      <div><label className="label">Phone</label><input className="input" defaultValue={doc.phone} placeholder="+1 555-000-0000"/></div>
-                      <div className="col-span-2"><label className="label">Email</label><input type="email" className="input" defaultValue={doc.email} placeholder="doctor@clinic.com"/></div>
+                      <div><label className="label">Full name</label><input className="input" defaultValue={doc.name} disabled placeholder="Dr. John Smith"/></div>
+                      <div><label className="label">Phone</label><input className="input" defaultValue={doc.phone||''} disabled placeholder="+1 555-000-0000"/></div>
+                      <div className="col-span-2"><label className="label">Email</label><input type="email" className="input" defaultValue={doc.email||''} disabled placeholder="doctor@clinic.com"/></div>
                     </div>
                   </div>
                 ))}
-              </div>
-              <div className="flex justify-end">
-                <Button variant="primary" leftIcon={<Save size={15}/>} onClick={handleSave}>
-                  {saved?'✓ Saved!':'Save Changes'}
-                </Button>
-              </div>
+                {newDoctor && (
+                  <div className="border border-primary-300 bg-primary-50/30 rounded-xl p-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><label className="label">Full name</label><input className="input" value={newDoctor.name} onChange={e=>setNewDoctor(d=>d&&{...d,name:e.target.value})} placeholder="Dr. John Smith"/></div>
+                      <div><label className="label">Phone</label><input className="input" value={newDoctor.phone} onChange={e=>setNewDoctor(d=>d&&{...d,phone:e.target.value})} placeholder="+1 555-000-0000"/></div>
+                      <div className="col-span-2"><label className="label">Email</label><input type="email" className="input" value={newDoctor.email} onChange={e=>setNewDoctor(d=>d&&{...d,email:e.target.value})} placeholder="doctor@clinic.com"/></div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="secondary" size="sm" onClick={()=>setNewDoctor(null)}>Cancel</Button>
+                      <Button variant="primary" size="sm" loading={createDoctor.isPending} onClick={async()=>{
+                        if(!newDoctor.name) return toast.error('Name is required')
+                        await createDoctor.mutateAsync(newDoctor); setNewDoctor(null); toast.success('Doctor added')
+                      }}>Save</Button>
+                    </div>
+                  </div>
+                )}
+              </div>}
             </div>
           )}
 

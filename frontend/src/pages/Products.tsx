@@ -2,11 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, LayoutGrid, List } from 'lucide-react'
 import { cn } from '../lib/utils'
-
-const PRODUCTS = [
-  { id:'GCCEMS', name:'Aligner Design ONLY W Onyxceph', provider:'Predict', price:'50,00 €', rating:5, description:'3D Design for Transparent Aligners. Design and 3D files to print your own aligners.' },
-  { id:'GCCEMS2', name:'Aligner Design + CBCT Segmentation', provider:'Predict', price:'30,00 €', rating:5, description:'Full arch segmentation from CBCT scan with aligner design files included.' },
-]
+import { useProducts } from '../lib/queries/products'
+import { Spinner, EmptyState } from '../components/ui'
 
 function Stars({ n }: { n: number }) {
   return <div className="flex gap-0.5">{Array.from({length:5}).map((_,i)=>(
@@ -16,9 +13,10 @@ function Stars({ n }: { n: number }) {
 
 export default function ProductsPage() {
   const navigate = useNavigate()
+  const { data:products=[], isLoading } = useProducts()
   const [search, setSearch] = useState('')
   const [view, setView] = useState<'grid'|'list'>('grid')
-  const filtered = PRODUCTS.filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()))
+  const filtered = products.filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()))
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -34,6 +32,9 @@ export default function ProductsPage() {
           <button onClick={()=>setView('list')} className={cn('p-2',view==='list'?'bg-primary-50 text-primary-600':'text-ink-400 hover:bg-surface-50')}><List size={16}/></button>
         </div>
       </div>
+      {isLoading?<div className="flex justify-center py-16"><Spinner/></div>:filtered.length===0?(
+        <EmptyState title="No products yet"/>
+      ):(
       <div className={cn(view==='grid'?'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6':'space-y-4')}>
         {filtered.map(p=>(
           <div key={p.id} className="card overflow-hidden hover:shadow-card transition-all cursor-pointer" onClick={()=>navigate(`/products/${p.id}`)}>
@@ -55,13 +56,14 @@ export default function ProductsPage() {
               <Stars n={p.rating}/>
               <p className="text-xs text-ink-500 mt-2 line-clamp-2 leading-relaxed">{p.description}</p>
               <div className="flex items-center justify-between mt-4 pt-3 border-t border-surface-100">
-                <span className="text-xl font-bold text-ink-900">{p.price}</span>
+                <span className="text-xl font-bold text-ink-900">{p.price.toFixed(2)} €</span>
                 <button className="btn-primary btn-sm" onClick={e=>{e.stopPropagation();navigate(`/products/${p.id}`)}}>Order now</button>
               </div>
             </div>
           </div>
         ))}
       </div>
+      )}
     </div>
   )
 }

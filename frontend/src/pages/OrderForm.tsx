@@ -1,7 +1,13 @@
 import { useState, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ShoppingCart, CheckCircle, Upload, X, FileText, Image } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { cn } from '../lib/utils'
+import { useProduct } from '../lib/queries/products'
+import { usePatients } from '../lib/queries/patients'
+import { useDoctors } from '../lib/queries/doctors'
+import { useDeliveryCenters } from '../lib/queries/deliveryCenters'
+import { useCreateOrder } from '../lib/queries/orders'
 
 const UPPER = [18,17,16,15,14,13,12,11,21,22,23,24,25,26,27,28]
 const LOWER = [48,47,46,45,44,43,42,41,31,32,33,34,35,36,37,38]
@@ -85,15 +91,21 @@ function Toggle({ checked, onChange, label }: { checked:boolean; onChange:(v:boo
 export default function OrderForm() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { data:product } = useProduct(id)
+  const { data:patients=[] } = usePatients()
+  const { data:doctors=[] } = useDoctors()
+  const { data:deliveryCenters=[] } = useDeliveryCenters()
+  const createOrder = useCreateOrder()
   const [selected, setSelected] = useState<number[]>([])
   const [photos, setPhotos] = useState<Record<string, File>>({})
   const [files, setFiles] = useState<File[]>([])
   const [draggingFiles, setDraggingFiles] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const filesRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState({
-    patient:'', doctor:'Dr. Ali Dabla', deliveryCenter:'',
-    chiefComplain:'', treatBothArch:'',
+    patientId:'', doctorId:'', deliveryCenterId:'',
+    chiefComplain:'', treatBothArch:false,
     treatmentPlan:'full_arch', dontMove:'',
     apRelationship:'maintain', anteroposterior:'',
     elastics:'', openBite:'correct',
@@ -102,7 +114,7 @@ export default function OrderForm() {
     spacesNotes:'', extractions:'', specialInstructions:'',
     cbctEnabled: true, wantManufacturing: false,
     material:'taglus', deliveryDate:'25/06/2026',
-    additionalInstructions:'',
+    additionalInstructions:'', urgent:false,
   })
 
   const upd = (k:string, v:any) => setForm(f=>({...f,[k]:v}))
@@ -113,7 +125,46 @@ export default function OrderForm() {
     setFiles(f => [...f, ...Array.from(incoming)])
   }
 
-  const total = 50 + (form.cbctEnabled ? 5 : 0)
+  const total = (product?.price||50) + (form.cbctEnabled ? 5 : 0)
+
+  const handleSubmit = async () => {
+    if(!form.patientId) return toast.error('Please select a patient')
+    setSubmitting(true)
+    try{
+      const order = await createOrder.mutateAsync({
+        patient_id: form.patientId,
+        product_id: id,
+        doctor_id: form.doctorId||undefined,
+        delivery_center_id: form.deliveryCenterId||undefined,
+        total,
+        chief_complain: form.chiefComplain||undefined,
+        treat_both_arch: form.treatBothArch,
+        treatment_plan_type: form.treatmentPlan,
+        dont_move: form.dontMove||undefined,
+        ap_relationship: form.apRelationship,
+        anteroposterior: form.anteroposterior||undefined,
+        elastics: form.elastics||undefined,
+        open_bite: form.openBite,
+        midline: form.midline,
+        ipr: form.ipr||undefined,
+        bite_ramps: form.biteRamps||undefined,
+        crossbite: form.crossbite,
+        spaces: form.spaces,
+        special_instructions: form.specialInstructions||undefined,
+        cbct_enabled: form.cbctEnabled,
+        want_manufacturing: form.wantManufacturing,
+        material: form.wantManufacturing?form.material:undefined,
+        urgent: form.urgent,
+      })
+      toast.success('Order placed')
+      navigate('/orders')
+      void order
+    }catch{
+      toast.error('Failed to place order')
+    }finally{
+      setSubmitting(false)
+    }
+  }
 
   const Radio = ({ name, value, current, label }: { name:string; value:string; current:string; label:string }) => (
     <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -136,7 +187,7 @@ export default function OrderForm() {
         <button onClick={()=>navigate('/products')} className="btn-ghost p-2 rounded-lg"><ArrowLeft size={18}/></button>
         <div>
           <h2 className="section-title">Place Order</h2>
-          <p className="text-muted">Aligner Design ONLY W Onyxceph — {total},00 €</p>
+          <p className="text-muted">{product?.name||'Loading…'} — {total.toFixed(2)} €</p>
         </div>
       </div>
 
@@ -156,24 +207,33 @@ export default function OrderForm() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="label">Patient <span className="text-primary-500" title="Patient name">ⓘ</span></label>
-                <input className="input" placeholder="Patient name" value={form.patient} onChange={e=>upd('patient',e.target.value)}/>
+                <select className="input" value={form.patientId} onChange={e=>upd('patientId',e.target.value)}>
+                  <option value="">-- Select patient --</option>
+                  {patients.map(p=><option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+                </select>
               </div>
               <div>
                 <label className="label">Doctor <span className="text-primary-500" title="Treating doctor">ⓘ</span></label>
-                <input className="input" value={form.doctor} onChange={e=>upd('doctor',e.target.value)}/>
+                <select className="input" value={form.doctorId} onChange={e=>upd('doctorId',e.target.value)}>
+                  <option value="">-- Select doctor --</option>
+                  {doctors.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
               </div>
             </div>
-            <div>
-              <label className="label">Delivery Center</label>
-              <select className="input" value={form.deliveryCenter} onChange={e=>upd('deliveryCenter',e.target.value)}>
-                <option value="">-- Select --</option>
-                <option value="dc1">Main Clinic</option>
-                <option value="dc2">Branch Office</option>
-              </select>
-            </div>
+            {(product?.has_delivery_center ?? true) && (
+              <div>
+                <label className="label">Delivery Center</label>
+                <select className="input" value={form.deliveryCenterId} onChange={e=>upd('deliveryCenterId',e.target.value)}>
+                  <option value="">-- Select --</option>
+                  {deliveryCenters.map(dc=><option key={dc.id} value={dc.id}>{dc.name}</option>)}
+                </select>
+              </div>
+            )}
+            <Toggle checked={form.urgent} onChange={v=>upd('urgent',v)} label="Urgent order"/>
           </div>
 
-          {/* Odontogram */}
+          {/* Odontogram — gated by the product's has_odontogram flag */}
+          {(product?.has_odontogram ?? true) && (
           <div className="card p-5">
             <div className="flex items-center justify-between mb-4">
               <p className="section-title text-base">Odontogram</p>
@@ -194,11 +254,16 @@ export default function OrderForm() {
               </div>
             )}
           </div>
+          )}
 
-          {/* Clinical fields */}
+          {/* Clinical fields — gated by the product's has_treatment_plan flag */}
+          {(product?.has_treatment_plan ?? true) && (
           <div className="card p-5 space-y-5">
             <div><label className="label">Chief Complain</label><textarea className="input min-h-[60px]" value={form.chiefComplain} onChange={e=>upd('chiefComplain',e.target.value)}/></div>
-            <div><label className="label">Treat both arch <span className="text-primary-500">ⓘ</span></label><input className="input" value={form.treatBothArch} onChange={e=>upd('treatBothArch',e.target.value)}/></div>
+            <div>
+              <label className="label">Treat both arch <span className="text-primary-500">ⓘ</span></label>
+              <Toggle checked={form.treatBothArch} onChange={v=>upd('treatBothArch',v)} label={form.treatBothArch?'Yes':'No'}/>
+            </div>
             <div>
               <label className="label">Treatment plan</label>
               <div className="flex flex-wrap gap-5 mt-2">
@@ -256,6 +321,7 @@ export default function OrderForm() {
             <div><label className="label">Extractions <span className="text-primary-500">ⓘ</span></label><input className="input" value={form.extractions} onChange={e=>upd('extractions',e.target.value)}/></div>
             <div><label className="label">Special Instructions</label><textarea className="input min-h-[80px]" value={form.specialInstructions} onChange={e=>upd('specialInstructions',e.target.value)}/></div>
           </div>
+          )}
 
           {/* CBCT Toggle */}
           <div className="card p-5">
@@ -299,7 +365,8 @@ export default function OrderForm() {
             </div>
           </div>
 
-          {/* Detailed photos of teeth */}
+          {/* Detailed photos of teeth — gated by the product's has_upload_boxes flag */}
+          {(product?.has_upload_boxes ?? true) && (
           <div className="card p-5">
             <p className="section-title text-base mb-1">Detailed photos of teeth <span className="text-primary-500 cursor-help" title="Upload clear photos from each angle">ⓘ</span></p>
             <p className="text-xs text-ink-400 mb-4">Upload clear photos from each angle for accurate treatment planning</p>
@@ -320,8 +387,10 @@ export default function OrderForm() {
               </div>
             )}
           </div>
+          )}
 
-          {/* Files upload */}
+          {/* Files upload — gated by the product's has_upload flag */}
+          {(product?.has_upload ?? true) && (
           <div className="card p-5">
             <p className="section-title text-base mb-1">Files <span className="text-primary-500 cursor-help" title="Upload scan files">ⓘ</span></p>
             <p className="text-xs text-ink-400 mb-4">You can upload a Zip or multiple files unzipped with the next formats/extensions: *.stl, *.ply, *.obj, *.zip, *.pdf and all types of images & videos</p>
@@ -358,6 +427,7 @@ export default function OrderForm() {
               </div>
             )}
           </div>
+          )}
 
         </div>
 
@@ -367,23 +437,24 @@ export default function OrderForm() {
             <p className="font-semibold text-ink-900">Order Details</p>
             <div className="text-sm space-y-1">
               <p className="text-ink-500">Delivery on <span className="text-primary-600 font-semibold">Thu 25 June 2026 - 14:41</span></p>
-              <p className="text-ink-500">Order by <span className="text-primary-600 font-semibold">{form.doctor||'—'}</span></p>
+              <p className="text-ink-500">Order by <span className="text-primary-600 font-semibold">{doctors.find(d=>d.id===form.doctorId)?.name||'—'}</span></p>
             </div>
             <div className="divider"/>
             <p className="font-semibold text-ink-900">Price Details</p>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-ink-600">Aligner Design ONLY W Onyxceph</span><span className="font-medium">50,00 €</span></div>
+              <div className="flex justify-between"><span className="text-ink-600">{product?.name||'Product'}</span><span className="font-medium">{(product?.price||50).toFixed(2)} €</span></div>
               {form.cbctEnabled && <div className="flex justify-between"><span className="text-ink-600">WE SEGMENT CBCT</span><span className="font-medium">5,00 €</span></div>}
               <div className="flex justify-between"><span className="text-ink-600">Standard Delivery</span><span className="font-semibold text-teal-600">Free</span></div>
             </div>
             <div className="divider"/>
             <div className="flex justify-between font-bold text-ink-900 text-lg">
-              <span>Total</span><span>{total},00 €</span>
+              <span>Total</span><span>{total.toFixed(2)} €</span>
             </div>
             <button
-              className="w-full py-3 rounded-xl bg-primary-600 text-white font-semibold hover:bg-primary-700 transition-colors"
-              onClick={()=>navigate('/orders')}>
-              Place Order
+              className="w-full py-3 rounded-xl bg-primary-600 text-white font-semibold hover:bg-primary-700 transition-colors disabled:opacity-60"
+              disabled={submitting}
+              onClick={handleSubmit}>
+              {submitting?'Placing order…':'Place Order'}
             </button>
 
             {/* Upload summary */}
