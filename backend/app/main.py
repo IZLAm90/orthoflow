@@ -15,6 +15,7 @@ from app.routers import (
     lab_orders,
     calendar,
     company,
+    notifications,
 )
 
 app = FastAPI(title="OrthoFlow API")
@@ -39,6 +40,7 @@ app.include_router(invoices.router)
 app.include_router(lab_orders.router)
 app.include_router(calendar.router)
 app.include_router(company.router)
+app.include_router(notifications.router)
 
 
 @app.get("/health")

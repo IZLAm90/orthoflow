@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 
-export interface Doctor { id:string; name:string; email?:string|null; phone?:string|null }
-export type DoctorCreate = { name:string; email?:string; phone?:string }
+export interface Doctor { id:string; name:string; email?:string|null; phone?:string|null; denomination:string; collegiate?:string|null }
+export type DoctorCreate = { name:string; email?:string; phone?:string; denomination?:string; collegiate?:string }
 
 export const useDoctors = () => useQuery({ queryKey:['doctors'], queryFn: async()=> (await api.get<Doctor[]>('/doctors')).data })
 export const useCreateDoctor = () => {

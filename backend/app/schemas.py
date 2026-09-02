@@ -457,6 +457,15 @@ class CalendarEvent(BaseModel):
     url: str
 
 
+# ---------- Notifications ----------
+
+class NotificationItem(BaseModel):
+    id: str
+    message: str
+    order_ref: str
+    created_at: datetime
+
+
 # ---------- Company settings ----------
 
 class CompanySettingsUpdate(BaseModel):

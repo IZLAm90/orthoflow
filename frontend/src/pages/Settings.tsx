@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { User, Lock, CreditCard, Truck, Stethoscope, Bell, Save, Plus, Trash2, Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../stores/authStore'
@@ -6,6 +6,7 @@ import { Avatar, Button, Spinner } from '../components/ui'
 import { cn } from '../lib/utils'
 import { useDoctors, useCreateDoctor, useDeleteDoctor } from '../lib/queries/doctors'
 import { useDeliveryCenters, useCreateDeliveryCenter, useDeleteDeliveryCenter } from '../lib/queries/deliveryCenters'
+import { useCompanySettings, useUpdateCompanySettings } from '../lib/queries/company'
 
 const SECTIONS = [
   { id:'general',   icon:User,        label:'General' },
@@ -37,12 +38,29 @@ export default function SettingsPage() {
   const { data:doctors=[], isLoading:doctorsLoading } = useDoctors()
   const createDoctor = useCreateDoctor()
   const deleteDoctor = useDeleteDoctor()
-  const [newDoctor, setNewDoctor] = useState<{name:string;email:string;phone:string}|null>(null)
+  const [newDoctor, setNewDoctor] = useState<{name:string;email:string;phone:string;denomination:string;collegiate:string}|null>(null)
 
   const { data:deliveryCenters=[], isLoading:centersLoading } = useDeliveryCenters()
   const createCenter = useCreateDeliveryCenter()
   const deleteCenter = useDeleteDeliveryCenter()
-  const [newCenter, setNewCenter] = useState<{name:string;address:string;phone:string}|null>(null)
+  const [newCenter, setNewCenter] = useState<{name:string;address:string;phone:string;city:string;locality:string;country:string;postal_code:string}|null>(null)
+
+  const { data:company } = useCompanySettings()
+  const updateCompany = useUpdateCompanySettings()
+  const [billing, setBilling] = useState({ company_name:'', billing_address:'', nif:'', billing_email:'', city:'', country:'Egypt' })
+  useEffect(() => {
+    if (!company) return
+    setBilling({
+      company_name: company.company_name || '',
+      billing_address: company.billing_address || '',
+      nif: company.nif || '',
+      billing_email: company.billing_email || general.email,
+      city: company.city || '',
+      country: company.country || 'Egypt',
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [company])
+  const updBilling = (k:string, v:string) => setBilling(b => ({...b, [k]:v}))
 
   const [notifications, setNotifications] = useState({
     orderPlaced: true, orderDelivered: true, planApproved: true,
@@ -185,33 +203,37 @@ export default function SettingsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <label className="label">Company / Clinic name</label>
-                  <input className="input" placeholder="OrthoFlow Clinic" defaultValue="OrthoFlow Clinic"/>
+                  <input className="input" placeholder="OrthoFlow Clinic" value={billing.company_name} onChange={e=>updBilling('company_name',e.target.value)}/>
                 </div>
                 <div className="col-span-2">
                   <label className="label">Billing address</label>
-                  <input className="input" placeholder="123 Medical St, Cairo, Egypt" defaultValue="123 Medical St, Cairo"/>
+                  <input className="input" placeholder="123 Medical St, Cairo, Egypt" value={billing.billing_address} onChange={e=>updBilling('billing_address',e.target.value)}/>
                 </div>
                 <div>
                   <label className="label">VAT / Tax number</label>
-                  <input className="input" placeholder="e.g. EG123456789"/>
+                  <input className="input" placeholder="e.g. EG123456789" value={billing.nif} onChange={e=>updBilling('nif',e.target.value)}/>
                 </div>
                 <div>
                   <label className="label">Billing email</label>
-                  <input type="email" className="input" placeholder="billing@clinic.com" defaultValue={general.email}/>
+                  <input type="email" className="input" placeholder="billing@clinic.com" value={billing.billing_email} onChange={e=>updBilling('billing_email',e.target.value)}/>
                 </div>
                 <div>
                   <label className="label">City</label>
-                  <input className="input" defaultValue="Cairo"/>
+                  <input className="input" value={billing.city} onChange={e=>updBilling('city',e.target.value)}/>
                 </div>
                 <div>
                   <label className="label">Country</label>
-                  <select className="input" defaultValue="Egypt">
+                  <select className="input" value={billing.country} onChange={e=>updBilling('country',e.target.value)}>
                     {COUNTRIES.map(c=><option key={c}>{c}</option>)}
                   </select>
                 </div>
               </div>
               <div className="flex justify-end">
-                <Button variant="primary" leftIcon={<Save size={15}/>} onClick={handleSave}>
+                <Button variant="primary" leftIcon={<Save size={15}/>} loading={updateCompany.isPending} onClick={async()=>{
+                  await updateCompany.mutateAsync(billing)
+                  toast.success('Billing info saved')
+                  handleSave()
+                }}>
                   {saved?'✓ Saved!':'Save Changes'}
                 </Button>
               </div>
@@ -226,7 +248,7 @@ export default function SettingsPage() {
                   <Truck size={20} className="text-primary-600"/>
                   <h3 className="text-lg font-semibold text-ink-900">Delivery centers</h3>
                 </div>
-                <Button variant="primary" size="sm" leftIcon={<Plus size={14}/>} onClick={()=>setNewCenter({name:'',address:'',phone:''})}>
+                <Button variant="primary" size="sm" leftIcon={<Plus size={14}/>} onClick={()=>setNewCenter({name:'',address:'',phone:'',city:'',locality:'',country:'',postal_code:''})}>
                   Add center
                 </Button>
               </div>
@@ -242,6 +264,10 @@ export default function SettingsPage() {
                       <div><label className="label">Name</label><input className="input" defaultValue={dc.name} disabled placeholder="Main Clinic"/></div>
                       <div><label className="label">Phone</label><input className="input" defaultValue={dc.phone||''} disabled placeholder="+1 555-000-0000"/></div>
                       <div className="col-span-2"><label className="label">Address</label><input className="input" defaultValue={dc.address||''} disabled placeholder="123 Medical St, Cairo, Egypt"/></div>
+                      <div><label className="label">City</label><input className="input" defaultValue={dc.city||''} disabled placeholder="Cairo"/></div>
+                      <div><label className="label">Locality</label><input className="input" defaultValue={dc.locality||''} disabled placeholder="Downtown"/></div>
+                      <div><label className="label">Country</label><input className="input" defaultValue={dc.country||''} disabled placeholder="Egypt"/></div>
+                      <div><label className="label">Postal Code</label><input className="input" defaultValue={dc.postal_code||''} disabled placeholder="11511"/></div>
                     </div>
                   </div>
                 ))}
@@ -251,6 +277,10 @@ export default function SettingsPage() {
                       <div><label className="label">Name</label><input className="input" value={newCenter.name} onChange={e=>setNewCenter(c=>c&&{...c,name:e.target.value})} placeholder="Main Clinic"/></div>
                       <div><label className="label">Phone</label><input className="input" value={newCenter.phone} onChange={e=>setNewCenter(c=>c&&{...c,phone:e.target.value})} placeholder="+1 555-000-0000"/></div>
                       <div className="col-span-2"><label className="label">Address</label><input className="input" value={newCenter.address} onChange={e=>setNewCenter(c=>c&&{...c,address:e.target.value})} placeholder="123 Medical St, Cairo, Egypt"/></div>
+                      <div><label className="label">City</label><input className="input" value={newCenter.city} onChange={e=>setNewCenter(c=>c&&{...c,city:e.target.value})} placeholder="Cairo"/></div>
+                      <div><label className="label">Locality</label><input className="input" value={newCenter.locality} onChange={e=>setNewCenter(c=>c&&{...c,locality:e.target.value})} placeholder="Downtown"/></div>
+                      <div><label className="label">Country</label><input className="input" value={newCenter.country} onChange={e=>setNewCenter(c=>c&&{...c,country:e.target.value})} placeholder="Egypt"/></div>
+                      <div><label className="label">Postal Code</label><input className="input" value={newCenter.postal_code} onChange={e=>setNewCenter(c=>c&&{...c,postal_code:e.target.value})} placeholder="11511"/></div>
                     </div>
                     <div className="flex justify-end gap-2">
                       <Button variant="secondary" size="sm" onClick={()=>setNewCenter(null)}>Cancel</Button>
@@ -273,7 +303,7 @@ export default function SettingsPage() {
                   <Stethoscope size={20} className="text-primary-600"/>
                   <h3 className="text-lg font-semibold text-ink-900">Doctors</h3>
                 </div>
-                <Button variant="primary" size="sm" leftIcon={<Plus size={14}/>} onClick={()=>setNewDoctor({name:'',email:'',phone:''})}>
+                <Button variant="primary" size="sm" leftIcon={<Plus size={14}/>} onClick={()=>setNewDoctor({name:'',email:'',phone:'',denomination:'dr',collegiate:''})}>
                   Add doctor
                 </Button>
               </div>
@@ -289,8 +319,10 @@ export default function SettingsPage() {
                       <button onClick={()=>deleteDoctor.mutate(doc.id)} className="text-red-400 hover:text-red-600 p-1"><Trash2 size={14}/></button>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div><label className="label">Full name</label><input className="input" defaultValue={doc.name} disabled placeholder="Dr. John Smith"/></div>
+                      <div><label className="label">Denomination</label><input className="input" defaultValue={doc.denomination==='dra'?'Dra.':'Dr.'} disabled/></div>
+                      <div><label className="label">Full name</label><input className="input" defaultValue={doc.name} disabled placeholder="John Smith"/></div>
                       <div><label className="label">Phone</label><input className="input" defaultValue={doc.phone||''} disabled placeholder="+1 555-000-0000"/></div>
+                      <div><label className="label">License number</label><input className="input" defaultValue={doc.collegiate||''} disabled placeholder="—"/></div>
                       <div className="col-span-2"><label className="label">Email</label><input type="email" className="input" defaultValue={doc.email||''} disabled placeholder="doctor@clinic.com"/></div>
                     </div>
                   </div>
@@ -298,8 +330,16 @@ export default function SettingsPage() {
                 {newDoctor && (
                   <div className="border border-primary-300 bg-primary-50/30 rounded-xl p-4 space-y-3">
                     <div className="grid grid-cols-2 gap-3">
-                      <div><label className="label">Full name</label><input className="input" value={newDoctor.name} onChange={e=>setNewDoctor(d=>d&&{...d,name:e.target.value})} placeholder="Dr. John Smith"/></div>
+                      <div>
+                        <label className="label">Denomination</label>
+                        <select className="input" value={newDoctor.denomination} onChange={e=>setNewDoctor(d=>d&&{...d,denomination:e.target.value})}>
+                          <option value="dr">Dr.</option>
+                          <option value="dra">Dra.</option>
+                        </select>
+                      </div>
+                      <div><label className="label">Full name</label><input className="input" value={newDoctor.name} onChange={e=>setNewDoctor(d=>d&&{...d,name:e.target.value})} placeholder="John Smith"/></div>
                       <div><label className="label">Phone</label><input className="input" value={newDoctor.phone} onChange={e=>setNewDoctor(d=>d&&{...d,phone:e.target.value})} placeholder="+1 555-000-0000"/></div>
+                      <div><label className="label">License number</label><input className="input" value={newDoctor.collegiate} onChange={e=>setNewDoctor(d=>d&&{...d,collegiate:e.target.value})} placeholder="e.g. 12345"/></div>
                       <div className="col-span-2"><label className="label">Email</label><input type="email" className="input" value={newDoctor.email} onChange={e=>setNewDoctor(d=>d&&{...d,email:e.target.value})} placeholder="doctor@clinic.com"/></div>
                     </div>
                     <div className="flex justify-end gap-2">
