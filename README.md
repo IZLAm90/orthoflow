@@ -21,16 +21,13 @@ npm install
 npm run dev
 ```
 
+Set `VITE_API_URL` in `frontend/.env` to point at the backend (see below).
+
 ## Backend
 
-Built with FastAPI (Python), JWT authentication, in-memory store.
-
-### Run locally
-```bash
-cd backend
-pip install -r requirements.txt
-python main.py
-```
+The backend lives in a separate repo: **[orthoflow-laravel](https://github.com/IZLAm90/orthoflow-laravel)**
+(Laravel 12, Sanctum token auth). Clone it alongside this repo and follow its own README to
+run it locally (defaults to `http://localhost:8001`).
 
 ## Mobile (Coming Soon)
 
