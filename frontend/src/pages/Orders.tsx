@@ -1,17 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ChevronRight, Download, Eye, Printer, ShoppingCart, List, Search, Check, AlertTriangle, Zap, FileText } from 'lucide-react'
-import toast from 'react-hot-toast'
+import { ChevronRight, Download, Eye, Search, Check, AlertTriangle, Zap } from 'lucide-react'
 import { cn, downloadCsv } from '../lib/utils'
-import { useCreateInvoice } from '../lib/queries/invoices'
 import { useOrders } from '../lib/queries/orders'
 import { useUIStore } from '../stores/uiStore'
-import Odontogram from '../components/order/Odontogram'
-import TreatmentPlanModal from '../components/treatment/TreatmentPlanModal'
-import { PLAN_STATUS, PLAN_TYPE, useDeleteTreatmentPlan } from '../lib/queries/treatmentPlans'
-import type { TreatmentPlan } from '../lib/queries/orders'
-import { useAuthStore } from '../stores/authStore'
-import { Spinner, EmptyState, Modal } from '../components/ui'
+import { Spinner, EmptyState } from '../components/ui'
 
 const STATUS_STYLE: Record<string,string> = {
   finished: 'bg-teal-50 text-teal-700 border border-teal-200',
@@ -24,24 +17,7 @@ const STATUS_LABEL: Record<string,string> = {
   plan_pending: 'Tx. Review',
 }
 
-const TREATMENT_PLAN_LABEL: Record<string,string> = { full_arch:'Full Arch', anterior_only:'Anterior Only', '4_4_only':'4 - 4 only', no_6_7:'Dont Move 6 - 7 only' }
-const AP_LABEL: Record<string,string> = { maintain:'Maintain', canine_only:'Improve canine only', canine_molar:'Improve canine and molar', both:'Correct both Molar and Canine' }
-const OPEN_BITE_LABEL: Record<string,string> = { correct:'Correct', maintain:'Maintain', improved:'Improved' }
-const MIDLINE_LABEL: Record<string,string> = { maintain:'Maintain', correct:'Correct' }
-const CROSSBITE_LABEL: Record<string,string> = { correct:'Correct', maintain:'Maintain', anterior:'Correct only anterior', posterior:'Correct only posterior' }
-const SPACES_LABEL: Record<string,string> = { close_all:'Close all spaces', maintain:'Maintain spaces' }
 
-function Stars() {
-  return (
-    <div className="flex gap-0.5">
-      {Array.from({length:5}).map((_,i)=>(
-        <svg key={i} className="text-amber-400 w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-        </svg>
-      ))}
-    </div>
-  )
-}
 
 function ToothIcon() {
   return (
@@ -69,16 +45,6 @@ export default function OrdersPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { setNewOrderOpen } = useUIStore()
-  const createInvoice = useCreateInvoice()
-  // Opens the order's invoice, issuing one first if the order hasn't been invoiced yet.
-  const openInvoice = async (orderId:string, invoiceId?:string|null) => {
-    let id = invoiceId
-    if (!id) {
-      try { id = (await createInvoice.mutateAsync({ order_ids:[orderId] })).id }
-      catch { toast.error('Could not create the invoice'); return }
-    }
-    navigate('/invoices', { state:{ invoiceId:id } })
-  }
   const exportOrders = () => downloadCsv(`orders-${new Date().toISOString().slice(0,10)}.csv`, [
     ['Reference','Status','Patient','Product','Doctor','Delivery center','Requested','Delivery on','Urgent','Total','Currency'],
     ...filtered.map(o=>[o.ref, STATUS_LABEL[o.status]||o.status, o.patient?`${o.patient.first_name} ${o.patient.last_name}`:'', o.product?.name, o.doctor?.name,
@@ -86,17 +52,12 @@ export default function OrdersPage() {
   ])
   const { data:orders=[], isLoading } = useOrders()
   // OrderForm hands over the order it just placed so we open straight onto it.
-  const [selected, setSelected] = useState<string|null>((location.state as { orderId?:string }|null)?.orderId ?? null)
+  // Older links handed the order over in router state; the detail now has its own URL.
+  const handedOver = (location.state as { orderId?:string }|null)?.orderId
+  useEffect(() => { if (handedOver) navigate(`/orders/${handedOver}`, { replace:true }) }, [handedOver, navigate])
   const [search, setSearch] = useState('')
   const [show, setShow] = useState(10)
   const [statusFilter, setStatusFilter] = useState('all')
-  const [expandedPlans, setExpandedPlans] = useState(true)
-  // undefined = closed, null = new plan, plan = editing it
-  const [planModal, setPlanModal] = useState<TreatmentPlan|null|undefined>(undefined)
-  const [deletingPlan, setDeletingPlan] = useState<TreatmentPlan|null>(null)
-  const deletePlan = useDeleteTreatmentPlan()
-  const isLab = useAuthStore(s=>s.user?.role === 'admin')
-  const [expandedObs, setExpandedObs] = useState(true)
 
   const filtered = orders.filter(o =>
     (statusFilter === 'all' || o.status === statusFilter) &&
@@ -105,264 +66,6 @@ export default function OrdersPage() {
       (o.patient && `${o.patient.first_name} ${o.patient.last_name}`.toLowerCase().includes(search.toLowerCase())))
   ).slice(0, show)
 
-  const order = orders.find(o => o.id === selected)
-
-  if (selected && order) {
-    const patientName = order.patient?`${order.patient.first_name} ${order.patient.last_name}`:'—'
-    return (
-      <div className="space-y-4 animate-fade-in">
-        <button onClick={()=>setSelected(null)} className="btn-ghost btn-sm print:hidden">Back to orders</button>
-        <div className="flex gap-3">
-          <div className="flex items-center gap-3 px-5 py-3 rounded-xl flex-1 border bg-surface-100 text-ink-400 border-surface-200">
-            <ShoppingCart size={18}/><div><p className="text-sm font-semibold">Order</p><p className="text-xs opacity-70">Your customized product</p></div>
-          </div>
-          <div className="flex items-center gap-3 px-5 py-3 rounded-xl flex-1 border bg-primary-600 text-white border-primary-600">
-            <List size={18}/><div><p className="text-sm font-semibold">Finish</p><p className="text-xs opacity-70">And wait for the delivery</p></div>
-          </div>
-        </div>
-        <div className="card p-6">
-          <div className="flex items-start justify-between mb-4">
-            <h2 className="text-lg font-bold text-primary-600">Order {STATUS_LABEL[order.status] || order.status} {order.ref} ({patientName})</h2>
-            <div className="flex gap-2 print:hidden">
-              <button className="btn-secondary btn-sm" disabled={createInvoice.isPending} onClick={()=>openInvoice(order.id, order.invoice_id)}><Download size={14}/> {order.invoice_id?'Invoice':'Create invoice'}</button>
-              <button className="btn-secondary btn-sm" onClick={()=>window.print()}><Printer size={14}/> Print</button>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-6">
-            <div className="col-span-2 space-y-2 text-sm">
-              <p className="font-bold text-ink-900 text-base">{order.product?.name||'—'}</p>
-              <p className="text-ink-500">By <span className="text-primary-600 font-medium">{order.product?.provider||'—'}</span></p>
-              <Stars />
-              <p className="text-ink-600">{order.product?.description}</p>
-              <div className="pt-2 space-y-1">
-                <p className="text-ink-700"><span className="font-semibold">Delivery center </span><span className="text-primary-600 font-medium">{order.delivery_center?.name||'—'}</span></p>
-                <p className="text-ink-700">Delivery on <span className="text-primary-600 font-semibold">{fmtDateTime(order.delivery_on)}</span></p>
-                <p className="text-ink-700">Order by <span className="text-primary-600 font-semibold">{order.doctor?.name||'—'}</span> for patient <span className="font-semibold">{patientName}</span></p>
-              </div>
-            </div>
-            <div className="flex items-center justify-center">
-              <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary-100 to-teal-100 flex items-center justify-center">
-                <svg viewBox="0 0 60 60" className="w-20 h-20">
-                  <ellipse cx="30" cy="42" rx="22" ry="8" fill="#e8d5c0" opacity="0.4"/>
-                  <rect x="12" y="10" width="10" height="26" rx="5" fill="#f5f0ea" stroke="#c9b99a" strokeWidth="1"/>
-                  <rect x="25" y="8" width="10" height="28" rx="5" fill="#fde68a" stroke="#f59e0b" strokeWidth="1.5"/>
-                  <rect x="38" y="10" width="10" height="26" rx="5" fill="#f5f0ea" stroke="#c9b99a" strokeWidth="1"/>
-                </svg>
-              </div>
-            </div>
-          </div>
-          <div className="mt-6 pt-6 border-t border-surface-100 grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
-            {[
-              ['Chief Complain', order.chief_complain],
-              ['Treat both arch', order.treat_both_arch?'yes':'no'],
-              ['Treatment plan', order.treatment_plan_type?TREATMENT_PLAN_LABEL[order.treatment_plan_type]:'—'],
-              ['AP Relationship', order.ap_relationship?AP_LABEL[order.ap_relationship]:'—'],
-              ['Anteroposterior relationship', order.anteroposterior],
-              ['Elastics', order.elastics],
-              ['Open Bite', order.open_bite?OPEN_BITE_LABEL[order.open_bite]:'—'],
-              ['Midline', order.midline?MIDLINE_LABEL[order.midline]:'—'],
-              ['IPR', order.ipr],
-              ['Bite Ramps', order.bite_ramps],
-              ['Crossbite', order.crossbite?CROSSBITE_LABEL[order.crossbite]:'—'],
-              ['Spaces', order.spaces?SPACES_LABEL[order.spaces]:'—'],
-              ['Spaces notes', order.spaces_notes],
-              ['Extractions', order.extractions],
-              ['Selected teeth', order.teeth?.length?order.teeth.map(t=>{
-                const names = (order.odontogram?.[t] ?? []).map(id=>order.product?.odontogram_marks?.find(m=>m.id===id)?.name ?? id)
-                return names.length?`${t} (${names.join(', ')})`:String(t)
-              }).join(', '):null],
-              ...(order.no_scans?[['Scans', 'Models will be sent via Postal Mail']]:[]),
-            ].map(([label,value])=>(
-              <p key={label as string} className="py-0.5">
-                <span className="font-semibold text-ink-800">{label}: </span>
-                <span className="text-ink-600">{value||'—'}</span>
-              </p>
-            ))}
-            {order.special_instructions ? (
-              <p className="col-span-2 py-0.5">
-                <span className="font-semibold text-ink-800">Special Instructions: </span>
-                <span className="text-ink-600">{order.special_instructions}</span>
-              </p>
-            ) : null}
-            {order.additional_instructions ? (
-              <p className="col-span-2 py-0.5">
-                <span className="font-semibold text-ink-800">Additional Instructions: </span>
-                <span className="text-ink-600">{order.additional_instructions}</span>
-              </p>
-            ) : null}
-          </div>
-          {(order.teeth?.length ?? 0) > 0 && (
-            <div className="mt-6 pt-6 border-t border-surface-100">
-              <p className="font-semibold text-ink-900 text-sm mb-3">Odontogram</p>
-              <div className="max-w-3xl"><Odontogram readOnly marks={order.product?.odontogram_marks ?? []} multiple={!!order.product?.odontogram_multiple}
-                value={Object.fromEntries((order.teeth ?? []).map(t=>[t, order.odontogram?.[t] ?? ['selected']]))}/></div>
-            </div>
-          )}
-          {order.files.length > 0 && (
-            <div className="mt-6 pt-6 border-t border-surface-100 space-y-4">
-              {order.files.some(f=>f.kind==='photo') && (
-                <div>
-                  <p className="font-semibold text-ink-900 text-sm mb-3">Photos</p>
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-                    {order.files.filter(f=>f.kind==='photo').map(f=>(
-                      <a key={f.id} href={f.url} target="_blank" rel="noreferrer" className="block group">
-                        {f.mime_type?.startsWith('image/')
-                          ? <img src={f.url} alt={f.slot||f.file_name} className="h-24 w-full object-cover rounded-lg border border-surface-200 group-hover:border-primary-400"/>
-                          : <div className="h-24 rounded-lg border border-surface-200 flex items-center justify-center group-hover:border-primary-400"><FileText size={24} className="text-primary-500"/></div>}
-                        <p className="text-xs text-ink-500 mt-1 capitalize text-center">{f.slot==='ortho'?'Orthopantomography':f.slot}</p>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {order.files.some(f=>f.kind==='file') && (
-                <div>
-                  <p className="font-semibold text-ink-900 text-sm mb-3">Files</p>
-                  <div className="space-y-2">
-                    {order.files.filter(f=>f.kind==='file').map(f=>(
-                      <a key={f.id} href={f.url} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-3 bg-surface-50 rounded-xl border border-surface-200 hover:border-primary-300">
-                        <div className="w-8 h-8 rounded-lg bg-primary-100 flex items-center justify-center text-[10px] font-mono font-bold text-primary-700 uppercase">{f.file_name.split('.').pop()}</div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-ink-900 truncate">{f.file_name}</p>
-                          <p className="text-xs text-ink-400">{(f.file_size/1e6).toFixed(2)} MB</p>
-                        </div>
-                        <Download size={14} className="text-ink-400"/>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          <div className="flex gap-3 mt-6 pt-4 border-t border-surface-100 print:hidden">
-            <button className="btn-primary btn-sm" onClick={()=>setNewOrderOpen(true)}>New Order</button>
-            <button className="btn-secondary btn-sm" onClick={()=>setSelected(null)}>View Orders</button>
-            {order.treatment_plans.length > 0 && (
-              <button className="btn-secondary btn-sm" onClick={()=>{
-                const latest = [...order.treatment_plans].reverse().find(p=>p.status==='PENDING') ?? order.treatment_plans[order.treatment_plans.length-1]
-                navigate(`/orders/${order.id}/treatment/${latest.id}`)
-              }}><Eye size={14}/> Review Treatment</button>
-            )}
-          </div>
-        </div>
-        {order.phases.length > 0 && (
-          <div className="card p-6">
-            <p className="font-semibold text-ink-900 mb-4">Order Timeline</p>
-            <div className="space-y-4">
-              {order.phases.map((phase,i)=>(
-                <div key={phase.id} className="flex gap-3">
-                  <div className="flex flex-col items-center">
-                    <div className={cn('w-2.5 h-2.5 rounded-full', i===order.phases.length-1?'bg-primary-600':'bg-teal-500')}/>
-                    {i<order.phases.length-1 && <div className="w-px flex-1 bg-surface-200 mt-1"/>}
-                  </div>
-                  <div className="pb-4">
-                    <p className="text-sm font-semibold text-ink-900">{phase.title}</p>
-                    {phase.details && <p className="text-xs text-ink-500 mt-0.5">{phase.details}</p>}
-                    <p className="text-xs text-ink-400 mt-0.5">{fmtDateTime(phase.created_at)}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        <div className="card overflow-hidden">
-          <button className="w-full flex items-center justify-between px-6 py-4 hover:bg-surface-50" onClick={()=>setExpandedPlans(!expandedPlans)}>
-            <p className="font-semibold text-ink-900">Treatment Plans</p>
-            <span className="flex items-center gap-3">
-              {isLab && <span role="button" tabIndex={0} className="btn-primary btn-sm print:hidden" onClick={e=>{ e.stopPropagation(); setPlanModal(null) }}>
-                {order.treatment_plans.length ? 'Add Treatment Plan' : 'Create Treatment Plan'}</span>}
-              <span className="text-ink-400">{expandedPlans ? '▲' : '▼'}</span>
-            </span>
-          </button>
-          {expandedPlans && (
-            <div className="border-t border-surface-200">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-surface-100 text-xs font-medium text-ink-400 uppercase">
-                    <th className="text-left px-5 py-3">Name</th>
-                    <th className="text-left px-5 py-3">Created</th>
-                    <th className="text-left px-5 py-3">Status</th>
-                    <th className="text-left px-5 py-3">Type</th>
-                    <th className="text-left px-5 py-3">Aligners</th>
-                    <th className="text-left px-5 py-3 print:hidden">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {order.treatment_plans.length===0 && <tr><td colSpan={6} className="text-center text-sm text-ink-400 py-6">No treatment plans yet</td></tr>}
-                  {order.treatment_plans.map((tp)=>(
-                    <tr key={tp.id} className="table-row">
-                      <td className="px-5 py-3 text-sm"><button className="text-primary-600 font-semibold hover:underline" onClick={()=>navigate(`/orders/${order.id}/treatment/${tp.id}`)}>{tp.name}</button></td>
-                      <td className="px-5 py-3 text-sm text-ink-600">{fmtDateTime(tp.created_at)}</td>
-                      <td className="px-5 py-3"><span className={cn('px-2.5 py-1 rounded-full text-xs font-semibold', PLAN_STATUS[tp.status]?.className ?? 'bg-surface-100 text-ink-600')}>{PLAN_STATUS[tp.status]?.label ?? tp.status}</span></td>
-                      <td className="px-5 py-3"><span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-primary-50 text-primary-700">{PLAN_TYPE[tp.type] ?? tp.type}</span></td>
-                      <td className="px-5 py-3 text-sm text-ink-700">Upper {tp.aligners_upper} · Lower {tp.aligners_lower} · <span className="font-semibold">Total {tp.total}</span></td>
-                      <td className="px-5 py-3 print:hidden">
-                        <div className="flex gap-1.5">
-                          <button className="btn-secondary btn-sm gap-1" onClick={()=>navigate(`/orders/${order.id}/treatment/${tp.id}`)}><Eye size={13}/> Review Treatment</button>
-                          {isLab && <button className="btn-ghost btn-sm" onClick={()=>setPlanModal(tp)}>Configure</button>}
-                          {isLab && <button className="btn-ghost btn-sm text-red-500" onClick={()=>setDeletingPlan(tp)}>Delete</button>}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="px-5 py-3 border-t border-surface-100 flex items-center justify-between">
-                <p className="text-xs text-ink-400">{order.treatment_plans.length} Total</p>
-              </div>
-            </div>
-          )}
-          {planModal !== undefined && (
-            <TreatmentPlanModal open orderId={order.id} plan={planModal} onClose={()=>setPlanModal(undefined)}
-              onSaved={id=>{ if (planModal === null) navigate(`/orders/${order.id}/treatment/${id}`) }}/>
-          )}
-          <Modal open={!!deletingPlan} onClose={()=>setDeletingPlan(null)} title={`Do you want to delete '${deletingPlan?.name}'?`} size="sm"
-            footer={<><button className="btn-secondary btn-sm" onClick={()=>setDeletingPlan(null)}>Cancel</button>
-              <button className="btn-primary btn-sm bg-red-600 hover:bg-red-700" onClick={async()=>{
-                const name = deletingPlan!.name
-                try { await deletePlan.mutateAsync(deletingPlan!.id); toast.success(`Treatment plan '${name}' deleted successfully.`) }
-                catch { toast.error('Could not delete the plan') }
-                setDeletingPlan(null)
-              }}>Delete</button></>}>
-            <p className="text-sm text-ink-600">The treatment plan '{deletingPlan?.name}' and all related files will be permanently deleted. The order status will remain unchanged, regardless of this treatment plan's status. This action cannot be undone.</p>
-          </Modal>
-        </div>
-        <div className="card overflow-hidden">
-          <button className="w-full flex items-center justify-between px-6 py-4 hover:bg-surface-50" onClick={()=>setExpandedObs(!expandedObs)}>
-            <p className="font-semibold text-ink-900">Treatment Plan Observations</p>
-            <span className="text-ink-400">{expandedObs ? '▲' : '▼'}</span>
-          </button>
-          {expandedObs && (
-            <div className="border-t border-surface-200 divide-y divide-surface-100">
-              {order.observations.length===0 && <p className="text-center text-sm text-ink-400 py-6">No observations yet</p>}
-              {order.observations.map((obs)=>(
-                <div key={obs.id} className="px-6 py-4 flex gap-4">
-                  <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary-700">
-                    {obs.user_name.charAt(0)}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="font-semibold text-sm text-ink-900">{obs.user_name}</p>
-                      <p className="text-xs text-ink-400">{fmtDateTime(obs.created_at)}</p>
-                    </div>
-                    <p className="text-xs font-semibold mb-1">
-                      <span className="text-primary-600">{obs.plan}</span>
-                      {obs.message === 'PLAN APPROVED' ? (
-                        <span className="text-teal-600"> &gt; PLAN APPROVED</span>
-                      ) : null}
-                    </p>
-                    {obs.message !== 'PLAN APPROVED' ? (
-                      <p className="text-sm text-ink-600 leading-relaxed">{obs.message}</p>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -422,7 +125,7 @@ export default function OrdersPage() {
             {filtered.map(o=>{
               const name = o.patient?`${o.patient.first_name} ${o.patient.last_name}`:'—'
               return (
-              <tr key={o.id} className="table-row cursor-pointer" onClick={()=>setSelected(o.id)}>
+              <tr key={o.id} className="table-row cursor-pointer" onClick={()=>navigate(`/orders/${o.id}`)}>
                 <td className="px-3 py-3 text-ink-400"><ChevronRight size={16}/></td>
                 <td className="px-4 py-3 text-primary-600 font-bold text-sm">
                   {o.ref}
@@ -449,8 +152,8 @@ export default function OrdersPage() {
                 <td className="px-4 py-3 text-sm text-ink-600">{fmtDateTime(o.delivery_on)}<DeliveryBadge status={o.status} deliveryOn={o.delivery_on}/></td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1">
-                    <button className="text-ink-400 hover:text-primary-600 p-1.5 rounded-lg hover:bg-primary-50" onClick={e=>{e.stopPropagation();setSelected(o.id)}}><Download size={15}/></button>
-                    <button className="text-ink-400 hover:text-primary-600 p-1.5 rounded-lg hover:bg-primary-50" onClick={e=>{e.stopPropagation();setSelected(o.id)}}><Eye size={15}/></button>
+                    <button className="text-ink-400 hover:text-primary-600 p-1.5 rounded-lg hover:bg-primary-50" onClick={e=>{e.stopPropagation();navigate(`/orders/${o.id}`)}}><Download size={15}/></button>
+                    <button className="text-ink-400 hover:text-primary-600 p-1.5 rounded-lg hover:bg-primary-50" onClick={e=>{e.stopPropagation();navigate(`/orders/${o.id}`)}}><Eye size={15}/></button>
                   </div>
                 </td>
               </tr>

@@ -51,3 +51,7 @@
   table { display: block; overflow-x: auto; white-space: nowrap; }
   .card { border-radius: 0.75rem; }
 }
+
+/* Finished-order success check (OrderParts SuccessCheckmark) */
+@keyframes checkCircle { to { stroke-dashoffset: 0; } }
+@keyframes checkTick { to { stroke-dashoffset: 0; } }

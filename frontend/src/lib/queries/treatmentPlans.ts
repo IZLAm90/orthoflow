@@ -10,7 +10,7 @@ export interface TreatmentPlanDetail extends TreatmentPlan {
 }
 export interface PlanInput {
   name?:string; type?:PlanType; viewer_type?:ViewerType|null; viewer_url?:string|null; viewer_password?:string|null
-  aligners_upper?:number; aligners_lower?:number; cost?:number; discount?:number; notes?:string|null
+  aligners_upper?:number; aligners_lower?:number; cost?:number; discount?:number; notes?:string|null; status?:string
 }
 
 export const PLAN_STATUS: Record<string,{ label:string; className:string }> = {
@@ -18,6 +18,7 @@ export const PLAN_STATUS: Record<string,{ label:string; className:string }> = {
   APPROVED: { label:'Approved', className:'bg-teal-50 text-teal-700 border border-teal-200' },
   REJECTED: { label:'Re-plan requested', className:'bg-red-50 text-red-700 border border-red-200' },
   FINISHED: { label:'Finished', className:'bg-surface-100 text-ink-600 border border-surface-200' },
+  REQUESTED:{ label:'Requested', className:'bg-[#00cfe81f] text-[#00a3b8] border border-[#00cfe866]' },
 }
 export const PLAN_TYPE: Record<string,string> = { TREATMENT:'Treatment', REFINEMENT:'Refinement', FINAL_REPORT:'Final Report' }
 
@@ -68,6 +69,14 @@ export const useAddObservation = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ orderId, ...body }: { orderId:string; user_name:string; plan?:string; message:string }) => (await api.post(`/orders/${orderId}/observations`, body)).data,
+    onSuccess: () => invalidate(qc),
+  })
+}
+export const useRequestPlan = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ orderId, ...body }: { orderId:string; type:'REFINEMENT'|'FINAL_REPORT'; message?:string; user_name?:string }) =>
+      (await api.post<TreatmentPlanDetail>(`/orders/${orderId}/treatment-plans/request`, body)).data,
     onSuccess: () => invalidate(qc),
   })
 }

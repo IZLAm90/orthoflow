@@ -1,6 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 
+export type OptionType = 'SECTION'|'INPUT'|'CHOOSER'|'LIST'|'BOOLEAN'
+export interface OptionItem { value:string; label:string; cost?:number|null }
+export interface ProductOption {
+  id:string; type:OptionType; title:string; help?:string|null; optional?:boolean; max_length?:number|null
+  multiple?:boolean; items?:OptionItem[]; default?:string|boolean|null; depends_on?:string|null; only_admin?:boolean
+}
 export interface OdontogramMark { id:string; name:string; color:string; price?:number|null; limit?:number|null }
 export interface Product {
   id:string; name:string; provider?:string|null; price:number; rating:number; description?:string|null
@@ -11,6 +17,7 @@ export interface Product {
   has_treatment_plan_multiplier:boolean; has_treatment_final_retainer:boolean
   share_materials:boolean; share_phases:boolean
   odontogram_marks?:OdontogramMark[]|null; odontogram_mandatory?:boolean; odontogram_multiple?:boolean
+  options?:ProductOption[]|null; category?:string|null; refinements_included?:number
 }
 export type ProductCreate = { name:string; provider?:string; price?:number; rating?:number; description?:string }
 
