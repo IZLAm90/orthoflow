@@ -8,6 +8,9 @@ import { usePatients } from '../lib/queries/patients'
 import { useDoctors } from '../lib/queries/doctors'
 import { useDeliveryCenters } from '../lib/queries/deliveryCenters'
 import { useCreateOrder, useUploadOrderFile } from '../lib/queries/orders'
+import type { OdontogramMark } from '../lib/queries/products'
+import { Modal } from '../components/ui'
+import InfoTip from '../components/ui/InfoTip'
 
 const toISODate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 
@@ -18,15 +21,21 @@ function FieldError({ show, children }: { show:boolean; children:React.ReactNode
 const UPPER = [18,17,16,15,14,13,12,11,21,22,23,24,25,26,27,28]
 const LOWER = [48,47,46,45,44,43,42,41,31,32,33,34,35,36,37,38]
 
-function ToothIcon({ id, selected, onClick }: { id:number; selected:boolean; onClick:()=>void }) {
+const MULTIPLE_COLOR = '#0f766e'
+
+// selected with no marks = plain selection (products without marks); with marks
+// the tooth takes the mark's color, or MULTIPLE_COLOR when it has several.
+function ToothIcon({ id, selected, marks, onClick }: { id:number; selected:boolean; marks:OdontogramMark[]; onClick:()=>void }) {
+  const color = marks.length > 1 ? MULTIPLE_COLOR : marks[0]?.color ?? (selected ? '#f59e0b' : null)
+  const title = `Tooth ${id}${marks.length ? ` — ${marks.map(m=>m.name).join(', ')}` : ''}`
   return (
-    <button onClick={onClick} title={`Tooth ${id}`} className="flex flex-col items-center gap-0.5 group">
-      <svg viewBox="0 0 20 38" className={cn('w-6 h-11 transition-all')}>
-        <ellipse cx="10" cy="11" rx="8.5" ry="10" fill={selected?'#fde68a':'#f5f0ea'} stroke={selected?'#f59e0b':'#c9b99a'} strokeWidth="1.2"/>
-        <path d="M3 19 Q10 24 17 19 Q15 32 10 34 Q5 32 3 19Z" fill={selected?'#fef3c7':'#ede0cc'} stroke={selected?'#f59e0b':'#c9b99a'} strokeWidth="1"/>
-        {selected && <ellipse cx="10" cy="11" rx="4" ry="4.5" fill="#f59e0b" opacity="0.5"/>}
+    <button type="button" onClick={onClick} title={title} className="flex flex-col items-center gap-0.5 group">
+      <svg viewBox="0 0 20 38" className={cn('w-6 h-11 transition-all group-hover:-translate-y-0.5')}>
+        <ellipse cx="10" cy="11" rx="8.5" ry="10" fill={color ? `${color}33` : '#f5f0ea'} stroke={color ?? '#c9b99a'} strokeWidth={color ? 1.6 : 1.2}/>
+        <path d="M3 19 Q10 24 17 19 Q15 32 10 34 Q5 32 3 19Z" fill={color ? `${color}1a` : '#ede0cc'} stroke={color ?? '#c9b99a'} strokeWidth="1"/>
+        {color && <ellipse cx="10" cy="11" rx="4" ry="4.5" fill={color} opacity="0.75"/>}
       </svg>
-      <span className="text-[9px] text-ink-400 font-mono leading-none">{id}</span>
+      <span className={cn('text-[9px] font-mono leading-none', color ? 'font-bold text-ink-800' : 'text-ink-400')}>{id}</span>
     </button>
   )
 }
@@ -36,13 +45,13 @@ interface PhotoUploadZone {
   key: string
 }
 
-const PHOTO_ZONES: PhotoUploadZone[] = [
-  { label: 'Right', key: 'right' },
-  { label: 'Front', key: 'front' },
-  { label: 'Left', key: 'left' },
-  { label: 'Upper', key: 'upper' },
-  { label: 'Lower', key: 'lower' },
-  { label: 'Orthopantomography', key: 'ortho' },
+const PHOTO_ZONES: (PhotoUploadZone & { help:string })[] = [
+  { label: 'Right', key: 'right', help: 'Upload an image of the right side of the teeth, clearly showing the lateral molar area.' },
+  { label: 'Front', key: 'front', help: 'Upload a frontal image, centered on the incisors and showing the full smile.' },
+  { label: 'Left', key: 'left', help: 'Upload an image of the left side of the teeth, clearly showing the lateral molar area.' },
+  { label: 'Upper', key: 'upper', help: 'Upload an image of the entire upper arch from an occlusal angle.' },
+  { label: 'Lower', key: 'lower', help: 'Upload an image of the entire lower arch from an occlusal angle.' },
+  { label: 'Orthopantomography', key: 'ortho', help: 'Upload the panoramic X-ray of the complete denture (Orthopantomography).' },
 ]
 
 function PhotoUpload({ label, infoTip, onFile, file, error }: { label:string; infoTip?:string; onFile:(f:File)=>void; file?:File; error?:boolean }) {
@@ -50,7 +59,7 @@ function PhotoUpload({ label, infoTip, onFile, file, error }: { label:string; in
   return (
     <div>
       <label className="label text-xs text-ink-600">
-        {label} {infoTip && <span className="text-primary-500 cursor-help ml-0.5" title={infoTip}>ⓘ</span>}
+        {label} {infoTip && <InfoTip text={infoTip}/>}
       </label>
       <div
         onClick={() => ref.current?.click()}
@@ -106,7 +115,10 @@ export default function OrderForm() {
   const uploadFile = useUploadOrderFile()
   const [progress, setProgress] = useState('')
   const [submitted, setSubmitted] = useState(false)
-  const [selected, setSelected] = useState<number[]>([])
+  // tooth -> mark ids; a tooth present with [] is a plain selection (no marks defined)
+  const [odontogram, setOdontogram] = useState<Record<number, string[]>>({})
+  const [activeMark, setActiveMark] = useState<string|null>(null)
+  const [legendOpen, setLegendOpen] = useState(false)
   const [photos, setPhotos] = useState<Record<string, File>>({})
   const [files, setFiles] = useState<File[]>([])
   const [draggingFiles, setDraggingFiles] = useState(false)
@@ -129,14 +141,37 @@ export default function OrderForm() {
   })
 
   const upd = (k:string, v:any) => setForm(f=>({...f,[k]:v}))
-  const toggleTooth = (id:number) => setSelected(s=>s.includes(id)?s.filter(t=>t!==id):[...s,id])
+  const marks: OdontogramMark[] = product?.odontogram_marks ?? []
+  const currentMark = marks.find(m=>m.id===activeMark) ?? marks[0]
+  const selected = Object.keys(odontogram).map(Number).sort((a,b)=>a-b)
+  const marksOf = (tooth:number) => (odontogram[tooth] ?? []).map(id=>marks.find(m=>m.id===id)).filter((m): m is OdontogramMark => !!m)
+  const toggleTooth = (tooth:number) => setOdontogram(o => {
+    const next = { ...o }
+    const current = next[tooth]
+    if (!currentMark) {
+      if (current) delete next[tooth]; else next[tooth] = []
+      return next
+    }
+    if (current?.includes(currentMark.id)) {
+      const rest = current.filter(m=>m!==currentMark.id)
+      if (rest.length) next[tooth] = rest; else delete next[tooth]
+    } else {
+      next[tooth] = product?.odontogram_multiple ? [...(current ?? []), currentMark.id] : [currentMark.id]
+    }
+    return next
+  })
+  // Each mark with a price is an add-on per tooth it's applied to.
+  const addOns = marks.filter(m=>(m.price ?? 0) > 0).map(m=>{
+    const count = selected.filter(t=>odontogram[t]?.includes(m.id)).length
+    return { mark:m, count, amount: count * (m.price ?? 0) }
+  }).filter(a=>a.count>0)
 
   const handleFiles = (incoming: FileList | null) => {
     if (!incoming) return
     setFiles(f => [...f, ...Array.from(incoming)])
   }
 
-  const total = (product?.price||50) + (form.cbctEnabled ? 5 : 0)
+  const total = (product?.price||50) + (form.cbctEnabled ? 5 : 0) + addOns.reduce((sum,a)=>sum+a.amount, 0)
   const deliveryStartDays = product?.delivery_start_days ?? 3
   const minDeliveryDate = toISODate(new Date(Date.now() + deliveryStartDays * 86400000))
   const estimatedDelivery = new Date(`${form.deliveryDate || minDeliveryDate}T00:00:00`)
@@ -154,9 +189,10 @@ export default function OrderForm() {
       ? PHOTO_ZONES.filter(z=>!photos[z.key]).map(z=>z.key) : [],
     files: showUpload && files.length===0 && !(product?.has_upload_optional && form.noScans),
     consent: !!product?.has_consent && !form.consent,
+    odontogram: (product?.has_odontogram ?? true) && !!product?.odontogram_mandatory && selected.length===0,
   }
   const hasErrors = errors.patient || errors.doctor || errors.deliveryCenter || errors.deliveryDate
-    || errors.photos.length>0 || errors.files || errors.consent
+    || errors.photos.length>0 || errors.files || errors.consent || errors.odontogram
 
   const handleSubmit = async () => {
     setSubmitted(true)
@@ -196,7 +232,8 @@ export default function OrderForm() {
         no_scans: form.noScans,
         consent_accepted: form.consent,
         urgent: form.urgent,
-        teeth: selected.length?[...selected].sort((a,b)=>a-b):undefined,
+        teeth: selected.length?selected:undefined,
+        odontogram: marks.length && selected.length ? odontogram : undefined,
         spaces_notes: form.spacesNotes||undefined,
         extractions: form.extractions||undefined,
         additional_instructions: form.additionalInstructions||undefined,
@@ -267,7 +304,7 @@ export default function OrderForm() {
           <div className="card p-5 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div data-invalid={submitted&&errors.patient}>
-                <label className="label">Patient <span className="text-primary-500 cursor-help" title="Patient name or your system reference">ⓘ</span></label>
+                <label className="label">Patient <InfoTip text="Patient name or your system reference"/></label>
                 <input className={cn('input', submitted&&errors.patient&&'border-red-500')} placeholder="Patient" list="order-patients" autoComplete="off"
                   value={form.patientName} onChange={e=>upd('patientName',e.target.value)}/>
                 <datalist id="order-patients">
@@ -276,7 +313,7 @@ export default function OrderForm() {
                 <FieldError show={submitted&&errors.patient}>This field is required</FieldError>
               </div>
               <div data-invalid={submitted&&errors.doctor}>
-                <label className="label">Doctor <span className="text-primary-500 cursor-help" title="This field is used to assign a Doctor for this order">ⓘ</span></label>
+                <label className="label">Doctor <InfoTip text="This field is used to assign a Doctor for this order"/></label>
                 <div className="flex gap-2">
                   <select className={cn('input', submitted&&errors.doctor&&'border-red-500')} value={form.doctorId} onChange={e=>upd('doctorId',e.target.value)}>
                     <option value="">-- Select Doctor --</option>
@@ -289,7 +326,7 @@ export default function OrderForm() {
             </div>
             {(product?.has_delivery_center ?? true) && (
               <div data-invalid={submitted&&errors.deliveryCenter}>
-                <label className="label">Delivery Center</label>
+                <label className="label">Delivery Center <InfoTip text="You need to, at least, select one delivery center where this order will be sent"/></label>
                 <div className="flex gap-2">
                   <select className={cn('input', submitted&&errors.deliveryCenter&&'border-red-500')} value={form.deliveryCenterId} onChange={e=>upd('deliveryCenterId',e.target.value)}>
                     <option value="">-- Select Delivery Center --</option>
@@ -301,7 +338,7 @@ export default function OrderForm() {
               </div>
             )}
             <div data-invalid={submitted&&errors.deliveryDate}>
-              <label className="label">Delivery Date <span className="text-primary-500 cursor-help" title={`The first available delivery date starts in ${deliveryStartDays} days. The default selected date is for the standard delivery.`}>ⓘ</span></label>
+              <label className="label">Delivery Date <InfoTip text={`The first available delivery date starts in ${deliveryStartDays} days. The default selected date is for the standard delivery.`}/></label>
               <input type="date" className={cn('input', submitted&&errors.deliveryDate&&'border-red-500')} min={minDeliveryDate}
                 value={form.deliveryDate || minDeliveryDate} onChange={e=>upd('deliveryDate',e.target.value)}/>
               <FieldError show={submitted&&errors.deliveryDate}>The first available delivery date starts in {deliveryStartDays} days</FieldError>
@@ -311,25 +348,59 @@ export default function OrderForm() {
 
           {/* Odontogram — gated by the product's has_odontogram flag */}
           {(product?.has_odontogram ?? true) && (
-          <div className="card p-5">
+          <div className="card p-5" data-invalid={submitted&&errors.odontogram}>
             <div className="flex items-center justify-between mb-4">
-              <p className="section-title text-base">Odontogram</p>
-              <button className="text-xs text-primary-600 hover:underline font-medium">View Color Legend</button>
+              <p className="section-title text-base">Odontogram{product?.odontogram_mandatory && <span className="text-red-500"> *</span>}</p>
+              {marks.length>0 && <button type="button" onClick={()=>setLegendOpen(true)} className="text-xs text-primary-600 hover:underline font-medium">View Color Legend</button>}
             </div>
+            {marks.length>0 && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {marks.map(m=>(
+                  <button key={m.id} type="button" onClick={()=>setActiveMark(m.id)}
+                    className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all',
+                      currentMark?.id===m.id ? 'border-transparent text-white shadow-sm' : 'border-surface-200 text-ink-600 hover:border-surface-300 bg-white')}
+                    style={currentMark?.id===m.id ? { backgroundColor:m.color } : undefined}>
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: currentMark?.id===m.id ? '#fff' : m.color }}/>
+                    {m.name}{(m.price ?? 0) > 0 && <span className="opacity-80">+{m.price!.toFixed(2)} €</span>}
+                  </button>
+                ))}
+              </div>
+            )}
             <p className="text-[11px] text-ink-400 text-center mb-2 font-medium uppercase tracking-wide">Upper arch</p>
             <div className="flex justify-center gap-0.5 mb-1">
-              {UPPER.map(id=><ToothIcon key={id} id={id} selected={selected.includes(id)} onClick={()=>toggleTooth(id)}/>)}
+              {UPPER.map(id=><ToothIcon key={id} id={id} selected={id in odontogram} marks={marksOf(id)} onClick={()=>toggleTooth(id)}/>)}
             </div>
             <div className="border-t-2 border-dashed border-surface-200 my-3"/>
             <div className="flex justify-center gap-0.5 mb-1">
-              {LOWER.map(id=><ToothIcon key={id} id={id} selected={selected.includes(id)} onClick={()=>toggleTooth(id)}/>)}
+              {LOWER.map(id=><ToothIcon key={id} id={id} selected={id in odontogram} marks={marksOf(id)} onClick={()=>toggleTooth(id)}/>)}
             </div>
             <p className="text-[11px] text-ink-400 text-center mt-2 font-medium uppercase tracking-wide">Lower arch</p>
             {selected.length>0&&(
               <div className="mt-3 p-2 bg-amber-50 rounded-xl border border-amber-200 text-center">
-                <p className="text-xs text-amber-700 font-semibold">{selected.length} tooth selected: {selected.sort((a,b)=>a-b).join(', ')}</p>
+                <p className="text-xs text-amber-700 font-semibold">
+                  {selected.length} tooth selected: {selected.map(t=>marksOf(t).length?`${t} (${marksOf(t).map(m=>m.name).join(', ')})`:t).join(', ')}
+                </p>
               </div>
             )}
+            <FieldError show={submitted&&errors.odontogram}>You must select at least one piece in the odontogram</FieldError>
+            <Modal open={legendOpen} onClose={()=>setLegendOpen(false)} title="Color Legend" size="sm">
+              <div className="space-y-2">
+                {marks.map(m=>(
+                  <div key={m.id} className="flex items-center gap-3 py-1">
+                    <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor:m.color }}/>
+                    <span className="text-sm text-ink-800 flex-1">{m.name}</span>
+                    <span className="text-sm text-ink-500">{(m.price ?? 0) > 0 ? `+${m.price!.toFixed(2)} € / tooth` : 'Free'}</span>
+                  </div>
+                ))}
+                {product?.odontogram_multiple && (
+                  <div className="flex items-center gap-3 py-1 border-t border-surface-100 pt-3">
+                    <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor:MULTIPLE_COLOR }}/>
+                    <span className="text-sm text-ink-800 flex-1">Multiple selection</span>
+                  </div>
+                )}
+                <p className="text-xs text-ink-400 pt-2">Choose a mark above the odontogram, then click teeth to apply it. Click a tooth again to remove the mark.</p>
+              </div>
+            </Modal>
           </div>
           )}
 
@@ -338,7 +409,7 @@ export default function OrderForm() {
           <div className="card p-5 space-y-5">
             <div><label className="label">Chief Complain</label><textarea className="input min-h-[60px]" value={form.chiefComplain} onChange={e=>upd('chiefComplain',e.target.value)}/></div>
             <div>
-              <label className="label">Treat both arch <span className="text-primary-500">ⓘ</span></label>
+              <label className="label">Treat both arch <InfoTip text="Turn on to plan treatment for the upper and lower arch together"/></label>
               <Toggle checked={form.treatBothArch} onChange={v=>upd('treatBothArch',v)} label={form.treatBothArch?'Yes':'No'}/>
             </div>
             <div>
@@ -349,7 +420,7 @@ export default function OrderForm() {
                 ))}
               </div>
             </div>
-            <div><label className="label">Don't move <span className="text-primary-500">ⓘ</span></label><input className="input" value={form.dontMove} onChange={e=>upd('dontMove',e.target.value)}/></div>
+            <div><label className="label">Don't move <InfoTip text="Teeth that must not be moved during treatment (e.g. 17, 27)"/></label><input className="input" value={form.dontMove} onChange={e=>upd('dontMove',e.target.value)}/></div>
             <div>
               <label className="label">AP Relationship</label>
               <div className="flex flex-wrap gap-5 mt-2">
@@ -358,8 +429,8 @@ export default function OrderForm() {
                 ))}
               </div>
             </div>
-            <div><label className="label">Anteroposterior relationship <span className="text-primary-500">ⓘ</span></label><input className="input" placeholder="Notes…" value={form.anteroposterior} onChange={e=>upd('anteroposterior',e.target.value)}/></div>
-            <div><label className="label">Elástics <span className="text-primary-500">ⓘ</span></label><input className="input" value={form.elastics} onChange={e=>upd('elastics',e.target.value)}/></div>
+            <div><label className="label">Anteroposterior relationship <InfoTip text="Notes on the front-to-back relationship between the arches"/></label><input className="input" placeholder="Notes…" value={form.anteroposterior} onChange={e=>upd('anteroposterior',e.target.value)}/></div>
+            <div><label className="label">Elástics <InfoTip text="Elastics the patient should wear, if any (type and position)"/></label><input className="input" value={form.elastics} onChange={e=>upd('elastics',e.target.value)}/></div>
             <div>
               <label className="label">Open Bite</label>
               <div className="flex gap-5 mt-2">
@@ -376,8 +447,8 @@ export default function OrderForm() {
                 ))}
               </div>
             </div>
-            <div><label className="label">IPR <span className="text-primary-500">ⓘ</span></label><input className="input" value={form.ipr} onChange={e=>upd('ipr',e.target.value)}/></div>
-            <div><label className="label">Bite Ramps <span className="text-primary-500">ⓘ</span></label><input className="input" value={form.biteRamps} onChange={e=>upd('biteRamps',e.target.value)}/></div>
+            <div><label className="label">IPR <InfoTip text="Interproximal reduction allowed or required (teeth and amount)"/></label><input className="input" value={form.ipr} onChange={e=>upd('ipr',e.target.value)}/></div>
+            <div><label className="label">Bite Ramps <InfoTip text="Where bite ramps should be placed, if any"/></label><input className="input" value={form.biteRamps} onChange={e=>upd('biteRamps',e.target.value)}/></div>
             <div>
               <label className="label">Crossbite</label>
               <div className="flex flex-wrap gap-5 mt-2">
@@ -394,8 +465,8 @@ export default function OrderForm() {
                 ))}
               </div>
             </div>
-            <div><label className="label">Spaces <span className="text-primary-500">ⓘ</span></label><input className="input" value={form.spacesNotes} onChange={e=>upd('spacesNotes',e.target.value)}/></div>
-            <div><label className="label">Extractions <span className="text-primary-500">ⓘ</span></label><input className="input" value={form.extractions} onChange={e=>upd('extractions',e.target.value)}/></div>
+            <div><label className="label">Spaces <InfoTip text="Specific notes about closing or keeping spaces"/></label><input className="input" value={form.spacesNotes} onChange={e=>upd('spacesNotes',e.target.value)}/></div>
+            <div><label className="label">Extractions <InfoTip text="Teeth to be extracted as part of the treatment"/></label><input className="input" value={form.extractions} onChange={e=>upd('extractions',e.target.value)}/></div>
             <div><label className="label">Special Instructions</label><textarea className="input min-h-[80px]" value={form.specialInstructions} onChange={e=>upd('specialInstructions',e.target.value)}/></div>
           </div>
           )}
@@ -406,7 +477,7 @@ export default function OrderForm() {
               <div>
                 <span className="text-sm font-semibold text-ink-900">WE SEGMENT CBCT</span>
                 <span className="ml-2 text-sm text-primary-600 font-semibold">(+€5,00)</span>
-                <span className="ml-1 text-primary-500 cursor-help" title="We will segment your CBCT scan">ⓘ</span>
+                <InfoTip className="ml-1" text="We will segment your CBCT scan"/>
               </div>
               <Toggle checked={form.cbctEnabled} onChange={v=>upd('cbctEnabled',v)} label="Enabled"/>
             </div>
@@ -438,14 +509,14 @@ export default function OrderForm() {
           {/* Detailed photos of teeth — gated by the product's has_upload_boxes flag */}
           {(product?.has_upload_boxes ?? true) && (
           <div className="card p-5">
-            <p className="section-title text-base mb-1">Detailed photos of teeth <span className="text-primary-500 cursor-help" title="Upload clear photos from each angle">ⓘ</span></p>
+            <p className="section-title text-base mb-1">Detailed photos of teeth <InfoTip text="Upload detailed photos of teeth from different angles"/></p>
             <p className="text-xs text-ink-400 mb-4">Upload clear photos from each angle for accurate treatment planning</p>
             <div className="grid grid-cols-3 gap-4" data-invalid={submitted&&errors.photos.length>0}>
               {PHOTO_ZONES.map(zone => (
                 <PhotoUpload
                   key={zone.key}
                   label={zone.label}
-                  infoTip={`Upload ${zone.label.toLowerCase()} view photo`}
+                  infoTip={zone.help}
                   file={photos[zone.key]}
                   error={submitted && errors.photos.includes(zone.key)}
                   onFile={f => setPhotos(p => ({...p, [zone.key]: f}))}
@@ -463,7 +534,7 @@ export default function OrderForm() {
           {/* Files upload — gated by the product's has_upload flag */}
           {showUpload && (
           <div className="card p-5" data-invalid={submitted&&errors.files}>
-            <p className="section-title text-base mb-1">Files <span className="text-primary-500 cursor-help" title="Upload scan files">ⓘ</span></p>
+            <p className="section-title text-base mb-1">Files <InfoTip text="Upload the scanned files. You can upload a Zip or multiple files unzipped with the next formats/extensions: *.stl, *.ply, *.obj, *.zip, *.pdf and all types of images & videos"/></p>
             <p className="text-xs text-ink-400 mb-4">You can upload a Zip or multiple files unzipped with the next formats/extensions: *.stl, *.ply, *.obj, *.zip, *.pdf and all types of images & videos</p>
             <div
               onDragOver={e=>{e.preventDefault();setDraggingFiles(true)}}
@@ -534,6 +605,10 @@ export default function OrderForm() {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-ink-600">{product?.name||'Product'}</span><span className="font-medium">{(product?.price||50).toFixed(2)} €</span></div>
               {form.cbctEnabled && <div className="flex justify-between"><span className="text-ink-600">WE SEGMENT CBCT</span><span className="font-medium">5,00 €</span></div>}
+              {addOns.length>0 && <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide pt-1">Add-ons</p>}
+              {addOns.map(a=>(
+                <div key={a.mark.id} className="flex justify-between"><span className="text-ink-600">{a.mark.name} × {a.count}</span><span className="font-medium">{a.amount.toFixed(2)} €</span></div>
+              ))}
               <div className="flex justify-between"><span className="text-ink-600">Standard Delivery</span><span className="font-semibold text-teal-600">Free</span></div>
             </div>
             <div className="divider"/>

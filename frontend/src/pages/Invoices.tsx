@@ -1,12 +1,19 @@
 import { useState, Fragment } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Download, Eye, FileText, ChevronLeft } from 'lucide-react'
-import { cn, formatDate } from '../lib/utils'
+import { cn, formatDate, downloadCsv } from '../lib/utils'
 import { useInvoices, type InvoiceOrderLine } from '../lib/queries/invoices'
 import { Spinner, EmptyState } from '../components/ui'
 
 export default function InvoicesPage() {
   const { data:invoices=[], isLoading } = useInvoices()
-  const [selected, setSelected] = useState<string | null>(null)
+  const location = useLocation()
+  // The order screen's Invoice button hands over which invoice to open.
+  const [selected, setSelected] = useState<string | null>((location.state as { invoiceId?:string }|null)?.invoiceId ?? null)
+  const exportInvoices = () => downloadCsv(`invoices-${new Date().toISOString().slice(0,10)}.csv`, [
+    ['Number','Status','Issue date','Due date','Total','Summary','Orders'],
+    ...invoices.map(i=>[i.number, i.status, i.issue_date?.slice(0,10), i.due_date?.slice(0,10), i.total.toFixed(2), i.summary, i.orders.map(o=>o.ref).join(' ')]),
+  ])
   const inv = invoices.find(i => i.id === selected)
 
   // Orders are grouped by prescribing doctor, each group followed by its own subtotal row.
@@ -23,7 +30,7 @@ export default function InvoicesPage() {
   if (selected && inv) {
     return (
       <div className="space-y-4 animate-fade-in max-w-4xl mx-auto">
-        <button onClick={() => setSelected(null)} className="btn-ghost btn-sm gap-2">
+        <button onClick={() => setSelected(null)} className="btn-ghost btn-sm gap-2 print:hidden">
           <ChevronLeft size={16}/> Back to invoices
         </button>
 
@@ -47,7 +54,7 @@ export default function InvoicesPage() {
               </span>
             </div>
             <div className="flex gap-2">
-              <button className="btn-secondary btn-sm gap-2"><Download size={14}/>Download PDF</button>
+              <button className="btn-secondary btn-sm gap-2 print:hidden" onClick={()=>window.print()}><Download size={14}/>Download PDF</button>
             </div>
           </div>
 
@@ -137,7 +144,7 @@ export default function InvoicesPage() {
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between">
         <div><h2 className="section-title">Invoices</h2><p className="text-muted">{invoices.length} invoices</p></div>
-        <button className="btn-secondary btn-sm gap-2"><Download size={14}/>Export</button>
+        <button className="btn-secondary btn-sm gap-2" onClick={exportInvoices} disabled={invoices.length===0}><Download size={14}/>Export</button>
       </div>
       <div className="card p-3 flex gap-3 flex-wrap">
         <select className="input py-1.5 text-sm w-28"><option>All</option><option>Draft</option><option>Paid</option></select>
@@ -182,7 +189,7 @@ export default function InvoicesPage() {
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-1">
                     <button className="text-ink-400 hover:text-primary-600 p-1.5 rounded-lg hover:bg-primary-50 transition-colors" onClick={e => { e.stopPropagation(); setSelected(inv.id) }}><Eye size={15}/></button>
-                    <button className="text-ink-400 hover:text-primary-600 p-1.5 rounded-lg hover:bg-primary-50 transition-colors" onClick={e => e.stopPropagation()}><Download size={15}/></button>
+                    <button className="text-ink-400 hover:text-primary-600 p-1.5 rounded-lg hover:bg-primary-50 transition-colors" onClick={e => { e.stopPropagation(); setSelected(inv.id); setTimeout(()=>window.print(), 300) }}><Download size={15}/></button>
                   </div>
                 </td>
               </tr>

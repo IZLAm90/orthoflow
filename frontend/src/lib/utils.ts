@@ -27,3 +27,16 @@ export const STATUS_CONFIG: Record<string,{label:string;color:string;dot:string}
   completed:{label:'Completed',color:'badge-gray',dot:'bg-ink-400'},
   on_hold:{label:'On hold',color:'badge-red',dot:'bg-red-500'},
 }
+
+// Excel opens UTF-8 CSV correctly only with a BOM.
+export function downloadCsv(filename: string, rows: (string|number|null|undefined)[][]) {
+  const esc = (v: string|number|null|undefined) => {
+    const t = v == null ? '' : String(v)
+    return /[",\n;]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t
+  }
+  const blob = new Blob(['\ufeff' + rows.map(r => r.map(esc).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = Object.assign(document.createElement('a'), { href: url, download: filename })
+  a.click()
+  URL.revokeObjectURL(url)
+}

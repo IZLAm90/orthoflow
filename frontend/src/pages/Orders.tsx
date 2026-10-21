@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ChevronRight, Download, Eye, Printer, ShoppingCart, List, Search, Check, AlertTriangle, Zap, FileText } from 'lucide-react'
-import { cn } from '../lib/utils'
+import toast from 'react-hot-toast'
+import { cn, downloadCsv } from '../lib/utils'
+import { useCreateInvoice } from '../lib/queries/invoices'
 import { useOrders } from '../lib/queries/orders'
 import { useUIStore } from '../stores/uiStore'
 import { Spinner, EmptyState } from '../components/ui'
@@ -62,6 +64,21 @@ export default function OrdersPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { setNewOrderOpen } = useUIStore()
+  const createInvoice = useCreateInvoice()
+  // Opens the order's invoice, issuing one first if the order hasn't been invoiced yet.
+  const openInvoice = async (orderId:string, invoiceId?:string|null) => {
+    let id = invoiceId
+    if (!id) {
+      try { id = (await createInvoice.mutateAsync({ order_ids:[orderId] })).id }
+      catch { toast.error('Could not create the invoice'); return }
+    }
+    navigate('/invoices', { state:{ invoiceId:id } })
+  }
+  const exportOrders = () => downloadCsv(`orders-${new Date().toISOString().slice(0,10)}.csv`, [
+    ['Reference','Status','Patient','Product','Doctor','Delivery center','Requested','Delivery on','Urgent','Total','Currency'],
+    ...filtered.map(o=>[o.ref, STATUS_LABEL[o.status]||o.status, o.patient?`${o.patient.first_name} ${o.patient.last_name}`:'', o.product?.name, o.doctor?.name,
+      o.delivery_center?.name, o.requested_at?.slice(0,10), o.delivery_on?.slice(0,10), o.urgent?'yes':'no', o.total.toFixed(2), o.currency]),
+  ])
   const { data:orders=[], isLoading } = useOrders()
   // OrderForm hands over the order it just placed so we open straight onto it.
   const [selected, setSelected] = useState<string|null>((location.state as { orderId?:string }|null)?.orderId ?? null)
@@ -84,7 +101,7 @@ export default function OrdersPage() {
     const patientName = order.patient?`${order.patient.first_name} ${order.patient.last_name}`:'—'
     return (
       <div className="space-y-4 animate-fade-in">
-        <button onClick={()=>setSelected(null)} className="btn-ghost btn-sm">Back to orders</button>
+        <button onClick={()=>setSelected(null)} className="btn-ghost btn-sm print:hidden">Back to orders</button>
         <div className="flex gap-3">
           <div className="flex items-center gap-3 px-5 py-3 rounded-xl flex-1 border bg-surface-100 text-ink-400 border-surface-200">
             <ShoppingCart size={18}/><div><p className="text-sm font-semibold">Order</p><p className="text-xs opacity-70">Your customized product</p></div>
@@ -96,9 +113,9 @@ export default function OrdersPage() {
         <div className="card p-6">
           <div className="flex items-start justify-between mb-4">
             <h2 className="text-lg font-bold text-primary-600">Order {STATUS_LABEL[order.status] || order.status} {order.ref} ({patientName})</h2>
-            <div className="flex gap-2">
-              <button className="btn-secondary btn-sm"><Download size={14}/> Invoice</button>
-              <button className="btn-secondary btn-sm"><Printer size={14}/> Print</button>
+            <div className="flex gap-2 print:hidden">
+              <button className="btn-secondary btn-sm" disabled={createInvoice.isPending} onClick={()=>openInvoice(order.id, order.invoice_id)}><Download size={14}/> {order.invoice_id?'Invoice':'Create invoice'}</button>
+              <button className="btn-secondary btn-sm" onClick={()=>window.print()}><Printer size={14}/> Print</button>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-6">
@@ -140,7 +157,10 @@ export default function OrdersPage() {
               ['Spaces', order.spaces?SPACES_LABEL[order.spaces]:'—'],
               ['Spaces notes', order.spaces_notes],
               ['Extractions', order.extractions],
-              ['Selected teeth', order.teeth?.length?order.teeth.join(', '):null],
+              ['Selected teeth', order.teeth?.length?order.teeth.map(t=>{
+                const names = (order.odontogram?.[t] ?? []).map(id=>order.product?.odontogram_marks?.find(m=>m.id===id)?.name ?? id)
+                return names.length?`${t} (${names.join(', ')})`:String(t)
+              }).join(', '):null],
               ...(order.no_scans?[['Scans', 'Models will be sent via Postal Mail']]:[]),
             ].map(([label,value])=>(
               <p key={label as string} className="py-0.5">
@@ -197,10 +217,9 @@ export default function OrdersPage() {
               )}
             </div>
           )}
-          <div className="flex gap-3 mt-6 pt-4 border-t border-surface-100">
+          <div className="flex gap-3 mt-6 pt-4 border-t border-surface-100 print:hidden">
             <button className="btn-primary btn-sm" onClick={()=>setNewOrderOpen(true)}>New Order</button>
             <button className="btn-secondary btn-sm" onClick={()=>setSelected(null)}>View Orders</button>
-            <button className="btn-secondary btn-sm"><Eye size={14}/></button>
           </div>
         </div>
         {order.phases.length > 0 && (
@@ -238,11 +257,10 @@ export default function OrdersPage() {
                     <th className="text-left px-5 py-3">Status</th>
                     <th className="text-left px-5 py-3">Type</th>
                     <th className="text-left px-5 py-3">Aligners</th>
-                    <th className="text-left px-5 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {order.treatment_plans.length===0 && <tr><td colSpan={6} className="text-center text-sm text-ink-400 py-6">No treatment plans yet</td></tr>}
+                  {order.treatment_plans.length===0 && <tr><td colSpan={5} className="text-center text-sm text-ink-400 py-6">No treatment plans yet</td></tr>}
                   {order.treatment_plans.map((tp)=>(
                     <tr key={tp.id} className="table-row">
                       <td className="px-5 py-3 text-primary-600 font-semibold text-sm">{tp.name}</td>
@@ -250,14 +268,12 @@ export default function OrdersPage() {
                       <td className="px-5 py-3"><span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700">{tp.status}</span></td>
                       <td className="px-5 py-3"><span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-primary-50 text-primary-700">{tp.type}</span></td>
                       <td className="px-5 py-3 text-sm text-ink-700">Total: {tp.total} | Issued: {tp.issued}</td>
-                      <td className="px-5 py-3"><button className="btn-secondary btn-sm"><Eye size={13}/> View</button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               <div className="px-5 py-3 border-t border-surface-100 flex items-center justify-between">
                 <p className="text-xs text-ink-400">{order.treatment_plans.length} Total</p>
-                <button className="px-4 py-2 rounded-xl bg-teal-600 text-white hover:bg-teal-700 text-xs font-semibold">Finish plan</button>
               </div>
             </div>
           )}
@@ -325,8 +341,7 @@ export default function OrdersPage() {
             </select>
           </div>
           <div className="flex gap-2 ml-auto">
-            <button className="btn-secondary btn-sm"><Eye size={13}/> View</button>
-            <button className="btn-secondary btn-sm"><Download size={13}/> Excel</button>
+            <button className="btn-secondary btn-sm" onClick={exportOrders} disabled={filtered.length===0}><Download size={13}/> Excel</button>
           </div>
         </div>
         <div className="flex items-center gap-2">
