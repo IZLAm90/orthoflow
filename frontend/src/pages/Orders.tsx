@@ -141,6 +141,7 @@ export default function OrdersPage() {
               ['Spaces notes', order.spaces_notes],
               ['Extractions', order.extractions],
               ['Selected teeth', order.teeth?.length?order.teeth.join(', '):null],
+              ...(order.no_scans?[['Scans', 'Models will be sent via Postal Mail']]:[]),
             ].map(([label,value])=>(
               <p key={label as string} className="py-0.5">
                 <span className="font-semibold text-ink-800">{label}: </span>

@@ -4,12 +4,16 @@ import { ArrowLeft, ShoppingCart, CheckCircle, Upload, X, FileText, Image } from
 import toast from 'react-hot-toast'
 import { cn } from '../lib/utils'
 import { useProduct } from '../lib/queries/products'
-import { usePatients, useCreatePatient } from '../lib/queries/patients'
+import { usePatients } from '../lib/queries/patients'
 import { useDoctors } from '../lib/queries/doctors'
 import { useDeliveryCenters } from '../lib/queries/deliveryCenters'
 import { useCreateOrder, useUploadOrderFile } from '../lib/queries/orders'
 
-const NEW_PATIENT = '__new__'
+const toISODate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+
+function FieldError({ show, children }: { show:boolean; children:React.ReactNode }) {
+  return show ? <p className="text-xs text-red-600 mt-1">{children}</p> : null
+}
 
 const UPPER = [18,17,16,15,14,13,12,11,21,22,23,24,25,26,27,28]
 const LOWER = [48,47,46,45,44,43,42,41,31,32,33,34,35,36,37,38]
@@ -41,7 +45,7 @@ const PHOTO_ZONES: PhotoUploadZone[] = [
   { label: 'Orthopantomography', key: 'ortho' },
 ]
 
-function PhotoUpload({ label, infoTip, onFile, file }: { label:string; infoTip?:string; onFile:(f:File)=>void; file?:File }) {
+function PhotoUpload({ label, infoTip, onFile, file, error }: { label:string; infoTip?:string; onFile:(f:File)=>void; file?:File; error?:boolean }) {
   const ref = useRef<HTMLInputElement>(null)
   return (
     <div>
@@ -52,7 +56,7 @@ function PhotoUpload({ label, infoTip, onFile, file }: { label:string; infoTip?:
         onClick={() => ref.current?.click()}
         className={cn(
           'border-2 border-dashed rounded-xl cursor-pointer transition-all h-36 flex flex-col items-center justify-center gap-2 group',
-          file ? 'border-teal-400 bg-teal-50' : 'border-primary-300 bg-primary-50/30 hover:bg-primary-50'
+          file ? 'border-teal-400 bg-teal-50' : error ? 'border-red-400 bg-red-50/40' : 'border-primary-300 bg-primary-50/30 hover:bg-primary-50'
         )}
       >
         {file ? (
@@ -74,6 +78,7 @@ function PhotoUpload({ label, infoTip, onFile, file }: { label:string; infoTip?:
         )}
         <input ref={ref} type="file" accept="image/*,.pdf" className="hidden" onChange={e => e.target.files?.[0] && onFile(e.target.files[0])}/>
       </div>
+      <FieldError show={!!error}>This image is mandatory</FieldError>
     </div>
   )
 }
@@ -98,10 +103,9 @@ export default function OrderForm() {
   const { data:doctors=[] } = useDoctors()
   const { data:deliveryCenters=[] } = useDeliveryCenters()
   const createOrder = useCreateOrder()
-  const createPatient = useCreatePatient()
   const uploadFile = useUploadOrderFile()
-  const [newPatient, setNewPatient] = useState({ firstName:'', lastName:'' })
   const [progress, setProgress] = useState('')
+  const [submitted, setSubmitted] = useState(false)
   const [selected, setSelected] = useState<number[]>([])
   const [photos, setPhotos] = useState<Record<string, File>>({})
   const [files, setFiles] = useState<File[]>([])
@@ -110,7 +114,7 @@ export default function OrderForm() {
   const filesRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState({
-    patientId:'', doctorId:'', deliveryCenterId:'',
+    patientName:'', doctorId:'', deliveryCenterId:'',
     chiefComplain:'', treatBothArch:false,
     treatmentPlan:'full_arch', dontMove:'',
     apRelationship:'maintain', anteroposterior:'',
@@ -121,6 +125,7 @@ export default function OrderForm() {
     cbctEnabled: true, wantManufacturing: false,
     material:'taglus', deliveryDate:'',
     additionalInstructions:'', urgent:false,
+    noScans:false, consent:false,
   })
 
   const upd = (k:string, v:any) => setForm(f=>({...f,[k]:v}))
@@ -132,30 +137,40 @@ export default function OrderForm() {
   }
 
   const total = (product?.price||50) + (form.cbctEnabled ? 5 : 0)
-  const estimatedDelivery = form.wantManufacturing && form.deliveryDate
-    ? new Date(`${form.deliveryDate}T00:00:00`)
-    : new Date(Date.now() + (product?.delivery_start_days ?? 3) * 86400000)
+  const deliveryStartDays = product?.delivery_start_days ?? 3
+  const minDeliveryDate = toISODate(new Date(Date.now() + deliveryStartDays * 86400000))
+  const estimatedDelivery = new Date(`${form.deliveryDate || minDeliveryDate}T00:00:00`)
   const estimatedDeliveryLabel = estimatedDelivery.toLocaleDateString('en-US', { weekday:'short', day:'numeric', month:'long', year:'numeric' })
 
+  // Same required-field rules as the reference platform, driven by the product's flags.
+  const showUpload = product?.has_upload ?? true
+  const showPhotos = product?.has_upload_boxes ?? true
+  const errors = {
+    patient: !form.patientName.trim(),
+    doctor: !(product?.has_doctor_optional ?? true) && !form.doctorId,
+    deliveryCenter: (product?.has_delivery_center ?? true) && !form.deliveryCenterId,
+    deliveryDate: !!form.deliveryDate && form.deliveryDate < minDeliveryDate,
+    photos: showPhotos && !(product?.has_upload_boxes_optional ?? true)
+      ? PHOTO_ZONES.filter(z=>!photos[z.key]).map(z=>z.key) : [],
+    files: showUpload && files.length===0 && !(product?.has_upload_optional && form.noScans),
+    consent: !!product?.has_consent && !form.consent,
+  }
+  const hasErrors = errors.patient || errors.doctor || errors.deliveryCenter || errors.deliveryDate
+    || errors.photos.length>0 || errors.files || errors.consent
+
   const handleSubmit = async () => {
-    const isNewPatient = form.patientId===NEW_PATIENT
-    if(!form.patientId) return toast.error('Please select a patient')
-    if(isNewPatient && (!newPatient.firstName.trim() || !newPatient.lastName.trim()))
-      return toast.error('Enter the new patient\'s first and last name')
+    setSubmitted(true)
+    if(hasErrors){
+      toast.error('Please complete the highlighted fields')
+      requestAnimationFrame(()=>document.querySelector('[data-invalid="true"]')?.scrollIntoView({ behavior:'smooth', block:'center' }))
+      return
+    }
     setSubmitting(true)
     let order
     try{
-      let patientId = form.patientId
-      if(isNewPatient){
-        setProgress('Creating patient…')
-        const created = await createPatient.mutateAsync({ first_name:newPatient.firstName.trim(), last_name:newPatient.lastName.trim() })
-        patientId = created.id
-        upd('patientId', created.id)
-        setNewPatient({ firstName:'', lastName:'' })
-      }
       setProgress('Placing order…')
       order = await createOrder.mutateAsync({
-        patient_id: patientId,
+        patient_name: form.patientName.trim(),
         product_id: id,
         doctor_id: form.doctorId||undefined,
         delivery_center_id: form.deliveryCenterId||undefined,
@@ -177,7 +192,9 @@ export default function OrderForm() {
         cbct_enabled: form.cbctEnabled,
         want_manufacturing: form.wantManufacturing,
         material: form.wantManufacturing?form.material:undefined,
-        delivery_on: form.wantManufacturing&&form.deliveryDate?form.deliveryDate:undefined,
+        delivery_on: form.deliveryDate||undefined,
+        no_scans: form.noScans,
+        consent_accepted: form.consent,
         urgent: form.urgent,
         teeth: selected.length?[...selected].sort((a,b)=>a-b):undefined,
         spaces_notes: form.spacesNotes||undefined,
@@ -249,40 +266,46 @@ export default function OrderForm() {
           {/* Patient / Doctor / Delivery */}
           <div className="card p-5 space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="label">Patient <span className="text-primary-500" title="Patient name">ⓘ</span></label>
-                <select className="input" value={form.patientId} onChange={e=>upd('patientId',e.target.value)}>
-                  <option value="">-- Select patient --</option>
-                  <option value={NEW_PATIENT}>+ New patient</option>
-                  {patients.map(p=><option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
-                </select>
-                {patients.length===0 && form.patientId!==NEW_PATIENT && (
-                  <p className="text-xs text-ink-400 mt-1">No patients yet — choose “+ New patient”.</p>
-                )}
+              <div data-invalid={submitted&&errors.patient}>
+                <label className="label">Patient <span className="text-primary-500 cursor-help" title="Patient name or your system reference">ⓘ</span></label>
+                <input className={cn('input', submitted&&errors.patient&&'border-red-500')} placeholder="Patient" list="order-patients" autoComplete="off"
+                  value={form.patientName} onChange={e=>upd('patientName',e.target.value)}/>
+                <datalist id="order-patients">
+                  {patients.map(p=><option key={p.id} value={`${p.first_name} ${p.last_name}`.trim()}/>)}
+                </datalist>
+                <FieldError show={submitted&&errors.patient}>This field is required</FieldError>
               </div>
-              <div>
-                <label className="label">Doctor <span className="text-primary-500" title="Treating doctor">ⓘ</span></label>
-                <select className="input" value={form.doctorId} onChange={e=>upd('doctorId',e.target.value)}>
-                  <option value="">-- Select doctor --</option>
-                  {doctors.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
+              <div data-invalid={submitted&&errors.doctor}>
+                <label className="label">Doctor <span className="text-primary-500 cursor-help" title="This field is used to assign a Doctor for this order">ⓘ</span></label>
+                <div className="flex gap-2">
+                  <select className={cn('input', submitted&&errors.doctor&&'border-red-500')} value={form.doctorId} onChange={e=>upd('doctorId',e.target.value)}>
+                    <option value="">-- Select Doctor --</option>
+                    {doctors.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                  <button type="button" className="btn-secondary btn-sm" onClick={()=>navigate('/settings')}>Add</button>
+                </div>
+                <FieldError show={submitted&&errors.doctor}>This field is required</FieldError>
               </div>
             </div>
-            {form.patientId===NEW_PATIENT && (
-              <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-primary-50/40 border border-primary-100">
-                <div><label className="label">First name</label><input className="input" autoFocus value={newPatient.firstName} onChange={e=>setNewPatient(n=>({...n,firstName:e.target.value}))}/></div>
-                <div><label className="label">Last name</label><input className="input" value={newPatient.lastName} onChange={e=>setNewPatient(n=>({...n,lastName:e.target.value}))}/></div>
-              </div>
-            )}
             {(product?.has_delivery_center ?? true) && (
-              <div>
+              <div data-invalid={submitted&&errors.deliveryCenter}>
                 <label className="label">Delivery Center</label>
-                <select className="input" value={form.deliveryCenterId} onChange={e=>upd('deliveryCenterId',e.target.value)}>
-                  <option value="">-- Select --</option>
-                  {deliveryCenters.map(dc=><option key={dc.id} value={dc.id}>{dc.name}</option>)}
-                </select>
+                <div className="flex gap-2">
+                  <select className={cn('input', submitted&&errors.deliveryCenter&&'border-red-500')} value={form.deliveryCenterId} onChange={e=>upd('deliveryCenterId',e.target.value)}>
+                    <option value="">-- Select Delivery Center --</option>
+                    {deliveryCenters.map(dc=><option key={dc.id} value={dc.id}>{dc.name}</option>)}
+                  </select>
+                  <button type="button" className="btn-secondary btn-sm" onClick={()=>navigate('/settings')}>Add</button>
+                </div>
+                <FieldError show={submitted&&errors.deliveryCenter}>This field is required</FieldError>
               </div>
             )}
+            <div data-invalid={submitted&&errors.deliveryDate}>
+              <label className="label">Delivery Date <span className="text-primary-500 cursor-help" title={`The first available delivery date starts in ${deliveryStartDays} days. The default selected date is for the standard delivery.`}>ⓘ</span></label>
+              <input type="date" className={cn('input', submitted&&errors.deliveryDate&&'border-red-500')} min={minDeliveryDate}
+                value={form.deliveryDate || minDeliveryDate} onChange={e=>upd('deliveryDate',e.target.value)}/>
+              <FieldError show={submitted&&errors.deliveryDate}>The first available delivery date starts in {deliveryStartDays} days</FieldError>
+            </div>
             <Toggle checked={form.urgent} onChange={v=>upd('urgent',v)} label="Urgent order"/>
           </div>
 
@@ -404,10 +427,6 @@ export default function OrderForm() {
                     ))}
                   </div>
                 </div>
-                <div>
-                  <label className="label">Delivery Date <span className="text-primary-500">ⓘ</span></label>
-                  <input type="date" className="input" min={new Date().toISOString().slice(0,10)} value={form.deliveryDate} onChange={e=>upd('deliveryDate',e.target.value)}/>
-                </div>
               </div>
             )}
             <div>
@@ -421,13 +440,14 @@ export default function OrderForm() {
           <div className="card p-5">
             <p className="section-title text-base mb-1">Detailed photos of teeth <span className="text-primary-500 cursor-help" title="Upload clear photos from each angle">ⓘ</span></p>
             <p className="text-xs text-ink-400 mb-4">Upload clear photos from each angle for accurate treatment planning</p>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-4" data-invalid={submitted&&errors.photos.length>0}>
               {PHOTO_ZONES.map(zone => (
                 <PhotoUpload
                   key={zone.key}
                   label={zone.label}
                   infoTip={`Upload ${zone.label.toLowerCase()} view photo`}
                   file={photos[zone.key]}
+                  error={submitted && errors.photos.includes(zone.key)}
                   onFile={f => setPhotos(p => ({...p, [zone.key]: f}))}
                 />
               ))}
@@ -441,8 +461,8 @@ export default function OrderForm() {
           )}
 
           {/* Files upload — gated by the product's has_upload flag */}
-          {(product?.has_upload ?? true) && (
-          <div className="card p-5">
+          {showUpload && (
+          <div className="card p-5" data-invalid={submitted&&errors.files}>
             <p className="section-title text-base mb-1">Files <span className="text-primary-500 cursor-help" title="Upload scan files">ⓘ</span></p>
             <p className="text-xs text-ink-400 mb-4">You can upload a Zip or multiple files unzipped with the next formats/extensions: *.stl, *.ply, *.obj, *.zip, *.pdf and all types of images & videos</p>
             <div
@@ -452,7 +472,7 @@ export default function OrderForm() {
               onClick={()=>filesRef.current?.click()}
               className={cn(
                 'border-2 border-dashed rounded-xl cursor-pointer transition-all py-12 flex flex-col items-center justify-center gap-3',
-                draggingFiles ? 'border-primary-500 bg-primary-50' : 'border-primary-300 bg-primary-50/20 hover:bg-primary-50'
+                draggingFiles ? 'border-primary-500 bg-primary-50' : submitted&&errors.files ? 'border-red-400 bg-red-50/40' : 'border-primary-300 bg-primary-50/20 hover:bg-primary-50'
               )}
             >
               <Upload size={36} className={cn('transition-colors', draggingFiles ? 'text-primary-600' : 'text-primary-400')}/>
@@ -477,6 +497,25 @@ export default function OrderForm() {
                 ))}
               </div>
             )}
+            <FieldError show={submitted&&errors.files}>You must upload at least one Zip file or multiple files unzipped</FieldError>
+            {product?.has_upload_optional && (
+              <label className="flex items-center gap-2 mt-4 text-sm text-ink-700 cursor-pointer">
+                <input type="checkbox" className="accent-primary-600" checked={form.noScans} onChange={e=>upd('noScans',e.target.checked)}/>
+                I don't have scanned files but I'll send the models via Postal Mail
+              </label>
+            )}
+          </div>
+          )}
+
+          {/* Consent — gated by the product's has_consent flag */}
+          {product?.has_consent && (
+          <div className="card p-5" data-invalid={submitted&&errors.consent}>
+            <p className="section-title text-base mb-3">Mandatory Consent</p>
+            <label className="flex items-start gap-2 text-sm text-ink-700 cursor-pointer">
+              <input type="checkbox" className="accent-primary-600 mt-0.5" checked={form.consent} onChange={e=>upd('consent',e.target.checked)}/>
+              <span>By checking and accepting the order I declare that I have informed the patient and they have signed the consent document</span>
+            </label>
+            <FieldError show={submitted&&errors.consent}>You must have read and approved the consent document</FieldError>
           </div>
           )}
 

@@ -22,9 +22,10 @@ export interface Order {
   bite_ramps?:string|null; crossbite?:string|null; spaces?:string|null; special_instructions?:string|null
   cbct_enabled:boolean; want_manufacturing:boolean; material?:string|null
   teeth?:number[]|null; spaces_notes?:string|null; extractions?:string|null; additional_instructions?:string|null
+  no_scans:boolean; consent_accepted:boolean
   treatment_plans: TreatmentPlan[]; observations: Observation[]; phases: OrderPhase[]; files: OrderFile[]
 }
-export type OrderCreate = Partial<Omit<Order,'id'|'ref'|'requested_at'|'patient'|'product'|'doctor'|'delivery_center'|'treatment_plans'|'observations'|'phases'|'files'>> & { patient_id:string }
+export type OrderCreate = Partial<Omit<Order,'id'|'ref'|'requested_at'|'patient'|'product'|'doctor'|'delivery_center'|'treatment_plans'|'observations'|'phases'|'files'>> & ({ patient_id:string } | { patient_name:string })
 
 export const useOrders = () => useQuery({ queryKey:['orders'], queryFn: async()=> (await api.get<Order[]>('/orders')).data })
 export const useOrder = (id?:string) => useQuery({ queryKey:['orders',id], queryFn: async()=> (await api.get<Order>(`/orders/${id}`)).data, enabled: !!id })
