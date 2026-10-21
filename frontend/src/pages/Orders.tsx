@@ -6,6 +6,7 @@ import { cn, downloadCsv } from '../lib/utils'
 import { useCreateInvoice } from '../lib/queries/invoices'
 import { useOrders } from '../lib/queries/orders'
 import { useUIStore } from '../stores/uiStore'
+import Odontogram from '../components/order/Odontogram'
 import { Spinner, EmptyState } from '../components/ui'
 
 const STATUS_STYLE: Record<string,string> = {
@@ -181,6 +182,13 @@ export default function OrdersPage() {
               </p>
             ) : null}
           </div>
+          {(order.teeth?.length ?? 0) > 0 && (
+            <div className="mt-6 pt-6 border-t border-surface-100">
+              <p className="font-semibold text-ink-900 text-sm mb-3">Odontogram</p>
+              <Odontogram readOnly marks={order.product?.odontogram_marks ?? []} multiple={!!order.product?.odontogram_multiple}
+                value={Object.fromEntries((order.teeth ?? []).map(t=>[t, order.odontogram?.[t] ?? ['selected']]))}/>
+            </div>
+          )}
           {order.files.length > 0 && (
             <div className="mt-6 pt-6 border-t border-surface-100 space-y-4">
               {order.files.some(f=>f.kind==='photo') && (

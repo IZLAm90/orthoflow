@@ -9,7 +9,7 @@ import { useDoctors } from '../lib/queries/doctors'
 import { useDeliveryCenters } from '../lib/queries/deliveryCenters'
 import { useCreateOrder, useUploadOrderFile } from '../lib/queries/orders'
 import type { OdontogramMark } from '../lib/queries/products'
-import { Modal } from '../components/ui'
+import Odontogram from '../components/order/Odontogram'
 import InfoTip from '../components/ui/InfoTip'
 
 const toISODate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
@@ -18,27 +18,6 @@ function FieldError({ show, children }: { show:boolean; children:React.ReactNode
   return show ? <p className="text-xs text-red-600 mt-1">{children}</p> : null
 }
 
-const UPPER = [18,17,16,15,14,13,12,11,21,22,23,24,25,26,27,28]
-const LOWER = [48,47,46,45,44,43,42,41,31,32,33,34,35,36,37,38]
-
-const MULTIPLE_COLOR = '#0f766e'
-
-// selected with no marks = plain selection (products without marks); with marks
-// the tooth takes the mark's color, or MULTIPLE_COLOR when it has several.
-function ToothIcon({ id, selected, marks, onClick }: { id:number; selected:boolean; marks:OdontogramMark[]; onClick:()=>void }) {
-  const color = marks.length > 1 ? MULTIPLE_COLOR : marks[0]?.color ?? (selected ? '#f59e0b' : null)
-  const title = `Tooth ${id}${marks.length ? ` — ${marks.map(m=>m.name).join(', ')}` : ''}`
-  return (
-    <button type="button" onClick={onClick} title={title} className="flex flex-col items-center gap-0.5 group">
-      <svg viewBox="0 0 20 38" className={cn('w-6 h-11 transition-all group-hover:-translate-y-0.5')}>
-        <ellipse cx="10" cy="11" rx="8.5" ry="10" fill={color ? `${color}33` : '#f5f0ea'} stroke={color ?? '#c9b99a'} strokeWidth={color ? 1.6 : 1.2}/>
-        <path d="M3 19 Q10 24 17 19 Q15 32 10 34 Q5 32 3 19Z" fill={color ? `${color}1a` : '#ede0cc'} stroke={color ?? '#c9b99a'} strokeWidth="1"/>
-        {color && <ellipse cx="10" cy="11" rx="4" ry="4.5" fill={color} opacity="0.75"/>}
-      </svg>
-      <span className={cn('text-[9px] font-mono leading-none', color ? 'font-bold text-ink-800' : 'text-ink-400')}>{id}</span>
-    </button>
-  )
-}
 
 interface PhotoUploadZone {
   label: string
@@ -117,8 +96,6 @@ export default function OrderForm() {
   const [submitted, setSubmitted] = useState(false)
   // tooth -> mark ids; a tooth present with [] is a plain selection (no marks defined)
   const [odontogram, setOdontogram] = useState<Record<number, string[]>>({})
-  const [activeMark, setActiveMark] = useState<string|null>(null)
-  const [legendOpen, setLegendOpen] = useState(false)
   const [photos, setPhotos] = useState<Record<string, File>>({})
   const [files, setFiles] = useState<File[]>([])
   const [draggingFiles, setDraggingFiles] = useState(false)
@@ -142,24 +119,8 @@ export default function OrderForm() {
 
   const upd = (k:string, v:any) => setForm(f=>({...f,[k]:v}))
   const marks: OdontogramMark[] = product?.odontogram_marks ?? []
-  const currentMark = marks.find(m=>m.id===activeMark) ?? marks[0]
   const selected = Object.keys(odontogram).map(Number).sort((a,b)=>a-b)
   const marksOf = (tooth:number) => (odontogram[tooth] ?? []).map(id=>marks.find(m=>m.id===id)).filter((m): m is OdontogramMark => !!m)
-  const toggleTooth = (tooth:number) => setOdontogram(o => {
-    const next = { ...o }
-    const current = next[tooth]
-    if (!currentMark) {
-      if (current) delete next[tooth]; else next[tooth] = []
-      return next
-    }
-    if (current?.includes(currentMark.id)) {
-      const rest = current.filter(m=>m!==currentMark.id)
-      if (rest.length) next[tooth] = rest; else delete next[tooth]
-    } else {
-      next[tooth] = product?.odontogram_multiple ? [...(current ?? []), currentMark.id] : [currentMark.id]
-    }
-    return next
-  })
   // Each mark with a price is an add-on per tooth it's applied to.
   const addOns = marks.filter(m=>(m.price ?? 0) > 0).map(m=>{
     const count = selected.filter(t=>odontogram[t]?.includes(m.id)).length
@@ -351,56 +312,9 @@ export default function OrderForm() {
           <div className="card p-5" data-invalid={submitted&&errors.odontogram}>
             <div className="flex items-center justify-between mb-4">
               <p className="section-title text-base">Odontogram{product?.odontogram_mandatory && <span className="text-red-500"> *</span>}</p>
-              {marks.length>0 && <button type="button" onClick={()=>setLegendOpen(true)} className="text-xs text-primary-600 hover:underline font-medium">View Color Legend</button>}
             </div>
-            {marks.length>0 && (
-              <div className="flex flex-wrap gap-2 mb-4">
-                {marks.map(m=>(
-                  <button key={m.id} type="button" onClick={()=>setActiveMark(m.id)}
-                    className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all',
-                      currentMark?.id===m.id ? 'border-transparent text-white shadow-sm' : 'border-surface-200 text-ink-600 hover:border-surface-300 bg-white')}
-                    style={currentMark?.id===m.id ? { backgroundColor:m.color } : undefined}>
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: currentMark?.id===m.id ? '#fff' : m.color }}/>
-                    {m.name}{(m.price ?? 0) > 0 && <span className="opacity-80">+{m.price!.toFixed(2)} €</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-            <p className="text-[11px] text-ink-400 text-center mb-2 font-medium uppercase tracking-wide">Upper arch</p>
-            <div className="flex justify-center gap-0.5 mb-1">
-              {UPPER.map(id=><ToothIcon key={id} id={id} selected={id in odontogram} marks={marksOf(id)} onClick={()=>toggleTooth(id)}/>)}
-            </div>
-            <div className="border-t-2 border-dashed border-surface-200 my-3"/>
-            <div className="flex justify-center gap-0.5 mb-1">
-              {LOWER.map(id=><ToothIcon key={id} id={id} selected={id in odontogram} marks={marksOf(id)} onClick={()=>toggleTooth(id)}/>)}
-            </div>
-            <p className="text-[11px] text-ink-400 text-center mt-2 font-medium uppercase tracking-wide">Lower arch</p>
-            {selected.length>0&&(
-              <div className="mt-3 p-2 bg-amber-50 rounded-xl border border-amber-200 text-center">
-                <p className="text-xs text-amber-700 font-semibold">
-                  {selected.length} tooth selected: {selected.map(t=>marksOf(t).length?`${t} (${marksOf(t).map(m=>m.name).join(', ')})`:t).join(', ')}
-                </p>
-              </div>
-            )}
+            <Odontogram marks={marks} value={odontogram} onChange={setOdontogram} multiple={!!product?.odontogram_multiple}/>
             <FieldError show={submitted&&errors.odontogram}>You must select at least one piece in the odontogram</FieldError>
-            <Modal open={legendOpen} onClose={()=>setLegendOpen(false)} title="Color Legend" size="sm">
-              <div className="space-y-2">
-                {marks.map(m=>(
-                  <div key={m.id} className="flex items-center gap-3 py-1">
-                    <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor:m.color }}/>
-                    <span className="text-sm text-ink-800 flex-1">{m.name}</span>
-                    <span className="text-sm text-ink-500">{(m.price ?? 0) > 0 ? `+${m.price!.toFixed(2)} € / tooth` : 'Free'}</span>
-                  </div>
-                ))}
-                {product?.odontogram_multiple && (
-                  <div className="flex items-center gap-3 py-1 border-t border-surface-100 pt-3">
-                    <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor:MULTIPLE_COLOR }}/>
-                    <span className="text-sm text-ink-800 flex-1">Multiple selection</span>
-                  </div>
-                )}
-                <p className="text-xs text-ink-400 pt-2">Choose a mark above the odontogram, then click teeth to apply it. Click a tooth again to remove the mark.</p>
-              </div>
-            </Modal>
           </div>
           )}
 

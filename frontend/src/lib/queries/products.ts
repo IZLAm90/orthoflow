@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 
-export interface OdontogramMark { id:string; name:string; color:string; price?:number|null }
+export interface OdontogramMark { id:string; name:string; color:string; price?:number|null; limit?:number|null }
 export interface Product {
   id:string; name:string; provider?:string|null; price:number; rating:number; description?:string|null
   delivery_start_days:number
