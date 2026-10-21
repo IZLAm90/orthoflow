@@ -194,8 +194,8 @@ export default function OrdersPage() {
           {(order.teeth?.length ?? 0) > 0 && (
             <div className="mt-6 pt-6 border-t border-surface-100">
               <p className="font-semibold text-ink-900 text-sm mb-3">Odontogram</p>
-              <Odontogram readOnly marks={order.product?.odontogram_marks ?? []} multiple={!!order.product?.odontogram_multiple}
-                value={Object.fromEntries((order.teeth ?? []).map(t=>[t, order.odontogram?.[t] ?? ['selected']]))}/>
+              <div className="max-w-3xl"><Odontogram readOnly marks={order.product?.odontogram_marks ?? []} multiple={!!order.product?.odontogram_multiple}
+                value={Object.fromEntries((order.teeth ?? []).map(t=>[t, order.odontogram?.[t] ?? ['selected']]))}/></div>
             </div>
           )}
           {order.files.length > 0 && (
@@ -278,7 +278,7 @@ export default function OrdersPage() {
             <div className="border-t border-surface-200">
               <table className="w-full">
                 <thead>
-                  <tr className="bg-surface-50 text-xs font-medium text-ink-400 uppercase">
+                  <tr className="bg-surface-100 text-xs font-medium text-ink-400 uppercase">
                     <th className="text-left px-5 py-3">Name</th>
                     <th className="text-left px-5 py-3">Created</th>
                     <th className="text-left px-5 py-3">Status</th>
@@ -407,7 +407,7 @@ export default function OrdersPage() {
         ):(
         <table className="w-full">
           <thead>
-            <tr className="bg-surface-50 text-xs font-medium text-ink-400 uppercase tracking-wide">
+            <tr className="bg-surface-100 text-xs font-medium text-ink-400 uppercase tracking-wide">
               <th className="w-8 px-3 py-3"/>
               <th className="text-left px-4 py-3">Ref.</th>
               <th className="text-left px-4 py-3">Status</th>

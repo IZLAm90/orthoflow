@@ -40,7 +40,7 @@ function CsvTable({ file }: { file:PlanFile }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-surface-200">
       <table className="w-full text-sm">
-        <thead><tr className="bg-surface-50 text-xs font-semibold text-ink-500 uppercase">{head.map((h,i)=><th key={i} className="text-left px-4 py-2">{h}</th>)}</tr></thead>
+        <thead><tr className="bg-surface-100 text-xs font-semibold text-ink-500 uppercase">{head.map((h,i)=><th key={i} className="text-left px-4 py-2">{h}</th>)}</tr></thead>
         <tbody>{body.map((r,i)=><tr key={i} className="border-t border-surface-100">{r.map((c,j)=><td key={j} className="px-4 py-2 text-ink-700">{c}</td>)}</tr>)}</tbody>
       </table>
     </div>
@@ -180,7 +180,7 @@ export default function TreatmentPlanPage() {
             <textarea id="plan-message" className="input min-h-[80px]" placeholder={canDecide ? 'Optional when accepting; required to ask for a re-plan' : 'Write a message…'} value={message} onChange={e=>setMessage(e.target.value)}/>
           </div>
           {canDecide ? (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2">
               <button className="btn-primary justify-center gap-1.5" disabled={decide.isPending} onClick={()=>otherApproved ? setConfirmApprove(true) : approve()}><Check size={15}/>Accept Treatment Plan</button>
               <button className="btn-secondary justify-center gap-1.5" disabled={decide.isPending} onClick={replan}><RefreshCw size={14}/>Ask for Re-plan</button>
             </div>

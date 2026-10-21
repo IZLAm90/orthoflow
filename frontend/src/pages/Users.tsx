@@ -43,7 +43,7 @@ export default function UsersPage() {
         ):(
         <table className="w-full">
           <thead>
-            <tr className="bg-surface-50 text-xs font-medium text-ink-400 uppercase tracking-wide">
+            <tr className="bg-surface-100 text-xs font-medium text-ink-400 uppercase tracking-wide">
               <th className="text-left px-5 py-3">User</th>
               <th className="text-left px-5 py-3">Email</th>
               <th className="text-left px-5 py-3">Role</th>

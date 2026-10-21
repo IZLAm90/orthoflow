@@ -41,18 +41,18 @@ export default function Login(){
       setLoading(false)
     }
   }
-  return <div className="min-h-screen bg-gradient-to-br from-primary-950 via-primary-900 to-teal-900 flex items-center justify-center p-4">
+  return <div className="min-h-screen bg-surface-50 flex items-center justify-center p-4">
     <div className="w-full max-w-md">
       <div className="text-center mb-8">
-        <div className="inline-flex w-14 h-14 rounded-2xl bg-white/10 items-center justify-center mb-4 border border-white/20">
+        <div className="inline-flex w-14 h-14 rounded-lg bg-primary-600 items-center justify-center mb-4 shadow-[0_8px_25px_-8px_#7367f0]">
           <Stethoscope size={28} className="text-white"/>
         </div>
-        <h1 className="text-2xl font-bold text-white">OrthoFlow</h1>
-        <p className="text-primary-300 text-sm mt-1">3D Orthodontics Treatment Platform</p>
+        <h1 className="text-[1.75rem] font-semibold text-primary-600">OrthoFlow</h1>
+        <p className="text-ink-500 mt-1">3D Orthodontics Treatment Platform</p>
       </div>
-      <div className="bg-white rounded-2xl p-8 shadow-float">
-        <h2 className="text-lg font-semibold text-ink-900 mb-1">Welcome back</h2>
-        <p className="text-sm text-ink-500 mb-6">Sign in to your clinic account</p>
+      <div className="card p-[1.5rem] sm:p-8">
+        <h2 className="text-[1.285rem] font-medium text-ink-900 mb-1">Welcome back! 👋</h2>
+        <p className="text-ink-700 mb-6">Sign in to your clinic account</p>
         {serverError && (
           <div className="mb-4 flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-sm text-red-700">
             <AlertCircle size={16} className="flex-shrink-0"/>
@@ -96,7 +96,7 @@ export default function Login(){
           </button>
         </form>
       </div>
-      <p className="text-center text-xs text-primary-400 mt-6">HIPAA compliant · End-to-end encrypted</p>
+      <p className="text-center text-xs text-ink-400 mt-6">HIPAA compliant · End-to-end encrypted</p>
     </div>
   </div>
 }

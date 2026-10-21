@@ -25,7 +25,7 @@ export default function Topbar() {
   useClickOutside(panelRef, () => setOpen(false))
 
   return (
-    <header className="h-14 bg-white border-b border-surface-200 flex items-center gap-3 px-4 flex-shrink-0 print:hidden">
+    <header className="h-[4.45rem] bg-white rounded-[0.428rem] shadow-card mx-4 md:mx-[2rem] mt-[1.3rem] flex items-center gap-3 px-[1rem] flex-shrink-0 relative z-20 print:hidden">
       {/* Hamburger - mobile only */}
       <button onClick={toggleSidebar} className="md:hidden text-ink-500 hover:text-ink-800 p-1">
         <Menu size={20}/>

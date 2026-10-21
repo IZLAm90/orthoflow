@@ -84,7 +84,7 @@ export default function InvoicesPage() {
           <div className="border border-surface-200 rounded-xl overflow-hidden mb-6">
             <table className="w-full">
               <thead>
-                <tr className="bg-surface-50 text-xs font-medium text-ink-400 uppercase tracking-wide">
+                <tr className="bg-surface-100 text-xs font-medium text-ink-400 uppercase tracking-wide">
                   <th className="text-left px-5 py-3">Order Ref.</th>
                   <th className="text-left px-5 py-3">Patient</th>
                   <th className="text-left px-5 py-3">Product</th>
@@ -159,7 +159,7 @@ export default function InvoicesPage() {
         ):(
         <table className="w-full">
           <thead>
-            <tr className="bg-surface-50 text-xs font-medium text-ink-400 uppercase tracking-wide">
+            <tr className="bg-surface-100 text-xs font-medium text-ink-400 uppercase tracking-wide">
               <th className="text-left px-5 py-3">Invoice N°</th>
               <th className="text-left px-5 py-3">Status</th>
               <th className="text-left px-5 py-3">Issue Date</th>

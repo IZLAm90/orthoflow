@@ -25,7 +25,7 @@ export default function AppLayout() {
       </div>
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden print:overflow-visible">
         <Topbar />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 print:overflow-visible print:p-0">
+        <main className="flex-1 overflow-y-auto px-4 md:px-[2rem] pt-[1.8rem] pb-[2rem] print:overflow-visible print:p-0">
           <Outlet />
         </main>
       </div>
