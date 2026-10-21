@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ChevronRight, Download, Eye, Printer, ShoppingCart, List, Search, Check, AlertTriangle, Zap } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { ChevronRight, Download, Eye, Printer, ShoppingCart, List, Search, Check, AlertTriangle, Zap, FileText } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { useOrders } from '../lib/queries/orders'
 import { Spinner, EmptyState } from '../components/ui'
@@ -59,8 +59,10 @@ function DeliveryBadge({ status, deliveryOn }: { status:string; deliveryOn?:stri
 
 export default function OrdersPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { data:orders=[], isLoading } = useOrders()
-  const [selected, setSelected] = useState<string|null>(null)
+  // OrderForm hands over the order it just placed so we open straight onto it.
+  const [selected, setSelected] = useState<string|null>((location.state as { orderId?:string }|null)?.orderId ?? null)
   const [search, setSearch] = useState('')
   const [show, setShow] = useState(10)
   const [statusFilter, setStatusFilter] = useState('all')
@@ -134,6 +136,9 @@ export default function OrdersPage() {
               ['Bite Ramps', order.bite_ramps],
               ['Crossbite', order.crossbite?CROSSBITE_LABEL[order.crossbite]:'—'],
               ['Spaces', order.spaces?SPACES_LABEL[order.spaces]:'—'],
+              ['Spaces notes', order.spaces_notes],
+              ['Extractions', order.extractions],
+              ['Selected teeth', order.teeth?.length?order.teeth.join(', '):null],
             ].map(([label,value])=>(
               <p key={label as string} className="py-0.5">
                 <span className="font-semibold text-ink-800">{label}: </span>
@@ -146,7 +151,49 @@ export default function OrdersPage() {
                 <span className="text-ink-600">{order.special_instructions}</span>
               </p>
             ) : null}
+            {order.additional_instructions ? (
+              <p className="col-span-2 py-0.5">
+                <span className="font-semibold text-ink-800">Additional Instructions: </span>
+                <span className="text-ink-600">{order.additional_instructions}</span>
+              </p>
+            ) : null}
           </div>
+          {order.files.length > 0 && (
+            <div className="mt-6 pt-6 border-t border-surface-100 space-y-4">
+              {order.files.some(f=>f.kind==='photo') && (
+                <div>
+                  <p className="font-semibold text-ink-900 text-sm mb-3">Photos</p>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+                    {order.files.filter(f=>f.kind==='photo').map(f=>(
+                      <a key={f.id} href={f.url} target="_blank" rel="noreferrer" className="block group">
+                        {f.mime_type?.startsWith('image/')
+                          ? <img src={f.url} alt={f.slot||f.file_name} className="h-24 w-full object-cover rounded-lg border border-surface-200 group-hover:border-primary-400"/>
+                          : <div className="h-24 rounded-lg border border-surface-200 flex items-center justify-center group-hover:border-primary-400"><FileText size={24} className="text-primary-500"/></div>}
+                        <p className="text-xs text-ink-500 mt-1 capitalize text-center">{f.slot==='ortho'?'Orthopantomography':f.slot}</p>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {order.files.some(f=>f.kind==='file') && (
+                <div>
+                  <p className="font-semibold text-ink-900 text-sm mb-3">Files</p>
+                  <div className="space-y-2">
+                    {order.files.filter(f=>f.kind==='file').map(f=>(
+                      <a key={f.id} href={f.url} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-3 bg-surface-50 rounded-xl border border-surface-200 hover:border-primary-300">
+                        <div className="w-8 h-8 rounded-lg bg-primary-100 flex items-center justify-center text-[10px] font-mono font-bold text-primary-700 uppercase">{f.file_name.split('.').pop()}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-ink-900 truncate">{f.file_name}</p>
+                          <p className="text-xs text-ink-400">{(f.file_size/1e6).toFixed(2)} MB</p>
+                        </div>
+                        <Download size={14} className="text-ink-400"/>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <div className="flex gap-3 mt-6 pt-4 border-t border-surface-100">
             <button className="btn-primary btn-sm" onClick={()=>navigate('/products')}>New Order</button>
             <button className="btn-secondary btn-sm" onClick={()=>setSelected(null)}>View Orders</button>

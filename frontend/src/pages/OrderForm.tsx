@@ -4,10 +4,12 @@ import { ArrowLeft, ShoppingCart, CheckCircle, Upload, X, FileText, Image } from
 import toast from 'react-hot-toast'
 import { cn } from '../lib/utils'
 import { useProduct } from '../lib/queries/products'
-import { usePatients } from '../lib/queries/patients'
+import { usePatients, useCreatePatient } from '../lib/queries/patients'
 import { useDoctors } from '../lib/queries/doctors'
 import { useDeliveryCenters } from '../lib/queries/deliveryCenters'
-import { useCreateOrder } from '../lib/queries/orders'
+import { useCreateOrder, useUploadOrderFile } from '../lib/queries/orders'
+
+const NEW_PATIENT = '__new__'
 
 const UPPER = [18,17,16,15,14,13,12,11,21,22,23,24,25,26,27,28]
 const LOWER = [48,47,46,45,44,43,42,41,31,32,33,34,35,36,37,38]
@@ -96,6 +98,10 @@ export default function OrderForm() {
   const { data:doctors=[] } = useDoctors()
   const { data:deliveryCenters=[] } = useDeliveryCenters()
   const createOrder = useCreateOrder()
+  const createPatient = useCreatePatient()
+  const uploadFile = useUploadOrderFile()
+  const [newPatient, setNewPatient] = useState({ firstName:'', lastName:'' })
+  const [progress, setProgress] = useState('')
   const [selected, setSelected] = useState<number[]>([])
   const [photos, setPhotos] = useState<Record<string, File>>({})
   const [files, setFiles] = useState<File[]>([])
@@ -113,7 +119,7 @@ export default function OrderForm() {
     crossbite:'correct', spaces:'close_all',
     spacesNotes:'', extractions:'', specialInstructions:'',
     cbctEnabled: true, wantManufacturing: false,
-    material:'taglus', deliveryDate:'25/06/2026',
+    material:'taglus', deliveryDate:'',
     additionalInstructions:'', urgent:false,
   })
 
@@ -126,15 +132,30 @@ export default function OrderForm() {
   }
 
   const total = (product?.price||50) + (form.cbctEnabled ? 5 : 0)
-  const estimatedDelivery = new Date(Date.now() + (product?.delivery_start_days ?? 3) * 86400000)
+  const estimatedDelivery = form.wantManufacturing && form.deliveryDate
+    ? new Date(`${form.deliveryDate}T00:00:00`)
+    : new Date(Date.now() + (product?.delivery_start_days ?? 3) * 86400000)
   const estimatedDeliveryLabel = estimatedDelivery.toLocaleDateString('en-US', { weekday:'short', day:'numeric', month:'long', year:'numeric' })
 
   const handleSubmit = async () => {
+    const isNewPatient = form.patientId===NEW_PATIENT
     if(!form.patientId) return toast.error('Please select a patient')
+    if(isNewPatient && (!newPatient.firstName.trim() || !newPatient.lastName.trim()))
+      return toast.error('Enter the new patient\'s first and last name')
     setSubmitting(true)
+    let order
     try{
-      const order = await createOrder.mutateAsync({
-        patient_id: form.patientId,
+      let patientId = form.patientId
+      if(isNewPatient){
+        setProgress('Creating patient…')
+        const created = await createPatient.mutateAsync({ first_name:newPatient.firstName.trim(), last_name:newPatient.lastName.trim() })
+        patientId = created.id
+        upd('patientId', created.id)
+        setNewPatient({ firstName:'', lastName:'' })
+      }
+      setProgress('Placing order…')
+      order = await createOrder.mutateAsync({
+        patient_id: patientId,
         product_id: id,
         doctor_id: form.doctorId||undefined,
         delivery_center_id: form.deliveryCenterId||undefined,
@@ -156,16 +177,37 @@ export default function OrderForm() {
         cbct_enabled: form.cbctEnabled,
         want_manufacturing: form.wantManufacturing,
         material: form.wantManufacturing?form.material:undefined,
+        delivery_on: form.wantManufacturing&&form.deliveryDate?form.deliveryDate:undefined,
         urgent: form.urgent,
+        teeth: selected.length?[...selected].sort((a,b)=>a-b):undefined,
+        spaces_notes: form.spacesNotes||undefined,
+        extractions: form.extractions||undefined,
+        additional_instructions: form.additionalInstructions||undefined,
       })
-      toast.success('Order placed')
-      navigate('/orders')
-      void order
     }catch{
       toast.error('Failed to place order')
-    }finally{
       setSubmitting(false)
+      setProgress('')
+      return
     }
+
+    // The order exists from here on; a failed upload shouldn't lose it, so
+    // report which attachments didn't make it and carry on to the order.
+    const uploads = [
+      ...Object.entries(photos).map(([slot,file])=>({ file, kind:'photo' as const, slot })),
+      ...files.map(file=>({ file, kind:'file' as const, slot:undefined })),
+    ]
+    const failed: string[] = []
+    for(let i=0;i<uploads.length;i++){
+      setProgress(`Uploading ${i+1} of ${uploads.length}…`)
+      try{ await uploadFile.mutateAsync({ orderId:order.id, ...uploads[i] }) }
+      catch{ failed.push(uploads[i].file.name) }
+    }
+    setSubmitting(false)
+    setProgress('')
+    if(failed.length) toast.error(`Order placed, but ${failed.length} file(s) failed to upload: ${failed.join(', ')}`, { duration:8000 })
+    else toast.success(`Order ${order.ref} placed`)
+    navigate('/orders', { state:{ orderId:order.id } })
   }
 
   const Radio = ({ name, value, current, label }: { name:string; value:string; current:string; label:string }) => (
@@ -211,8 +253,12 @@ export default function OrderForm() {
                 <label className="label">Patient <span className="text-primary-500" title="Patient name">ⓘ</span></label>
                 <select className="input" value={form.patientId} onChange={e=>upd('patientId',e.target.value)}>
                   <option value="">-- Select patient --</option>
+                  <option value={NEW_PATIENT}>+ New patient</option>
                   {patients.map(p=><option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
                 </select>
+                {patients.length===0 && form.patientId!==NEW_PATIENT && (
+                  <p className="text-xs text-ink-400 mt-1">No patients yet — choose “+ New patient”.</p>
+                )}
               </div>
               <div>
                 <label className="label">Doctor <span className="text-primary-500" title="Treating doctor">ⓘ</span></label>
@@ -222,6 +268,12 @@ export default function OrderForm() {
                 </select>
               </div>
             </div>
+            {form.patientId===NEW_PATIENT && (
+              <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-primary-50/40 border border-primary-100">
+                <div><label className="label">First name</label><input className="input" autoFocus value={newPatient.firstName} onChange={e=>setNewPatient(n=>({...n,firstName:e.target.value}))}/></div>
+                <div><label className="label">Last name</label><input className="input" value={newPatient.lastName} onChange={e=>setNewPatient(n=>({...n,lastName:e.target.value}))}/></div>
+              </div>
+            )}
             {(product?.has_delivery_center ?? true) && (
               <div>
                 <label className="label">Delivery Center</label>
@@ -354,10 +406,7 @@ export default function OrderForm() {
                 </div>
                 <div>
                   <label className="label">Delivery Date <span className="text-primary-500">ⓘ</span></label>
-                  <div className="flex gap-2">
-                    <input className="input" value={form.deliveryDate} onChange={e=>upd('deliveryDate',e.target.value)} placeholder="dd/mm/yyyy"/>
-                    <button className="btn-secondary px-3"><span>📅</span></button>
-                  </div>
+                  <input type="date" className="input" min={new Date().toISOString().slice(0,10)} value={form.deliveryDate} onChange={e=>upd('deliveryDate',e.target.value)}/>
                 </div>
               </div>
             )}
@@ -456,7 +505,7 @@ export default function OrderForm() {
               className="w-full py-3 rounded-xl bg-primary-600 text-white font-semibold hover:bg-primary-700 transition-colors disabled:opacity-60"
               disabled={submitting}
               onClick={handleSubmit}>
-              {submitting?'Placing order…':'Place Order'}
+              {submitting?(progress||'Placing order…'):'Place Order'}
             </button>
 
             {/* Upload summary */}
