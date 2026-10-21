@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { ChevronRight, Download, Eye, Printer, ShoppingCart, List, Search, Check, AlertTriangle, Zap, FileText } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { useOrders } from '../lib/queries/orders'
+import { useUIStore } from '../stores/uiStore'
 import { Spinner, EmptyState } from '../components/ui'
 
 const STATUS_STYLE: Record<string,string> = {
@@ -60,6 +61,7 @@ function DeliveryBadge({ status, deliveryOn }: { status:string; deliveryOn?:stri
 export default function OrdersPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { setNewOrderOpen } = useUIStore()
   const { data:orders=[], isLoading } = useOrders()
   // OrderForm hands over the order it just placed so we open straight onto it.
   const [selected, setSelected] = useState<string|null>((location.state as { orderId?:string }|null)?.orderId ?? null)
@@ -195,7 +197,7 @@ export default function OrdersPage() {
             </div>
           )}
           <div className="flex gap-3 mt-6 pt-4 border-t border-surface-100">
-            <button className="btn-primary btn-sm" onClick={()=>navigate('/products')}>New Order</button>
+            <button className="btn-primary btn-sm" onClick={()=>setNewOrderOpen(true)}>New Order</button>
             <button className="btn-secondary btn-sm" onClick={()=>setSelected(null)}>View Orders</button>
             <button className="btn-secondary btn-sm"><Eye size={14}/></button>
           </div>
@@ -300,7 +302,7 @@ export default function OrdersPage() {
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between">
         <div><h2 className="section-title">Orders</h2><p className="text-muted">{orders.length} Total</p></div>
-        <button className="btn-primary btn-sm" onClick={()=>navigate('/products')}>New Order</button>
+        <button className="btn-primary btn-sm" onClick={()=>setNewOrderOpen(true)}>New Order</button>
       </div>
       <div className="card p-4 space-y-3">
         <div className="flex flex-wrap gap-3 items-center">
@@ -336,7 +338,7 @@ export default function OrdersPage() {
       </div>
       <div className="card overflow-hidden">
         {isLoading?<div className="flex justify-center py-16"><Spinner/></div>:filtered.length===0?(
-          <EmptyState title="No orders yet" description="Place your first order from the Products page." action={<button className="btn-primary btn-sm" onClick={()=>navigate('/products')}>New Order</button>}/>
+          <EmptyState title="No orders yet" description="Place your first order from the Products page." action={<button className="btn-primary btn-sm" onClick={()=>setNewOrderOpen(true)}>New Order</button>}/>
         ):(
         <table className="w-full">
           <thead>

@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
+import NewOrderModal from './NewOrderModal'
 import { useUIStore } from '../../stores/uiStore'
 import { cn } from '../../lib/utils'
 
@@ -28,6 +29,7 @@ export default function AppLayout() {
           <Outlet />
         </main>
       </div>
+      <NewOrderModal />
     </div>
   )
 }

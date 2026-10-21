@@ -18,7 +18,7 @@ function useClickOutside(ref: React.RefObject<HTMLElement>, onOutside: () => voi
 export default function Topbar() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { toggleSidebar } = useUIStore()
+  const { toggleSidebar, setNewOrderOpen } = useUIStore()
   const { data:notifications=[] } = useNotifications()
   const [open, setOpen] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -35,10 +35,10 @@ export default function Topbar() {
         <input className="input pl-8 py-1.5 text-sm w-full" placeholder="Search..."/>
       </div>
       <div className="ml-auto flex items-center gap-2">
-        <button onClick={()=>navigate('/products')} className="btn-primary btn-sm gap-1.5 hidden sm:flex">
+        <button onClick={()=>setNewOrderOpen(true)} className="btn-primary btn-sm gap-1.5 hidden sm:flex">
           <Plus size={14}/><span>New case</span>
         </button>
-        <button onClick={()=>navigate('/products')} className="btn-primary p-2 rounded-lg sm:hidden">
+        <button onClick={()=>setNewOrderOpen(true)} className="btn-primary p-2 rounded-lg sm:hidden">
           <Plus size={16}/>
         </button>
         <div className="relative" ref={panelRef}>
