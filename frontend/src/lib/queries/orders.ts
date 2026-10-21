@@ -5,7 +5,14 @@ import type { Product } from './products'
 import type { Doctor } from './doctors'
 import type { DeliveryCenter } from './deliveryCenters'
 
-export interface TreatmentPlan { id:string; order_id:string; name:string; created_at:string; status:string; type:string; total:number; issued:number }
+export type PlanStatus = 'PENDING'|'APPROVED'|'REJECTED'|'FINISHED'
+export type PlanType = 'TREATMENT'|'REFINEMENT'|'FINAL_REPORT'
+export type ViewerType = 'URL'|'FILE'|'SHAPE3D'|'ONYXCEPH'
+export interface TreatmentPlan {
+  id:string; order_id:string; name:string; created_at:string; status:PlanStatus|string; type:PlanType|string
+  total:number; issued:number; viewer_type?:ViewerType|null; viewer_url?:string|null
+  aligners_upper:number; aligners_lower:number; cost:number; discount:number; notes?:string|null; decided_at?:string|null
+}
 export interface Observation { id:string; order_id:string; user_name:string; created_at:string; plan?:string|null; message:string }
 export interface OrderPhase { id:string; title:string; details?:string|null; created_at:string }
 export interface OrderFile { id:string; order_id:string; kind:'photo'|'file'; slot?:string|null; file_name:string; file_size:number; mime_type?:string|null; url:string; created_at:string }

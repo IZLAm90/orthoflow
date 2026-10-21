@@ -7,7 +7,11 @@ import { useCreateInvoice } from '../lib/queries/invoices'
 import { useOrders } from '../lib/queries/orders'
 import { useUIStore } from '../stores/uiStore'
 import Odontogram from '../components/order/Odontogram'
-import { Spinner, EmptyState } from '../components/ui'
+import TreatmentPlanModal from '../components/treatment/TreatmentPlanModal'
+import { PLAN_STATUS, PLAN_TYPE, useDeleteTreatmentPlan } from '../lib/queries/treatmentPlans'
+import type { TreatmentPlan } from '../lib/queries/orders'
+import { useAuthStore } from '../stores/authStore'
+import { Spinner, EmptyState, Modal } from '../components/ui'
 
 const STATUS_STYLE: Record<string,string> = {
   finished: 'bg-teal-50 text-teal-700 border border-teal-200',
@@ -87,6 +91,11 @@ export default function OrdersPage() {
   const [show, setShow] = useState(10)
   const [statusFilter, setStatusFilter] = useState('all')
   const [expandedPlans, setExpandedPlans] = useState(true)
+  // undefined = closed, null = new plan, plan = editing it
+  const [planModal, setPlanModal] = useState<TreatmentPlan|null|undefined>(undefined)
+  const [deletingPlan, setDeletingPlan] = useState<TreatmentPlan|null>(null)
+  const deletePlan = useDeleteTreatmentPlan()
+  const isLab = useAuthStore(s=>s.user?.role === 'admin')
   const [expandedObs, setExpandedObs] = useState(true)
 
   const filtered = orders.filter(o =>
@@ -228,6 +237,12 @@ export default function OrdersPage() {
           <div className="flex gap-3 mt-6 pt-4 border-t border-surface-100 print:hidden">
             <button className="btn-primary btn-sm" onClick={()=>setNewOrderOpen(true)}>New Order</button>
             <button className="btn-secondary btn-sm" onClick={()=>setSelected(null)}>View Orders</button>
+            {order.treatment_plans.length > 0 && (
+              <button className="btn-secondary btn-sm" onClick={()=>{
+                const latest = [...order.treatment_plans].reverse().find(p=>p.status==='PENDING') ?? order.treatment_plans[order.treatment_plans.length-1]
+                navigate(`/orders/${order.id}/treatment/${latest.id}`)
+              }}><Eye size={14}/> Review Treatment</button>
+            )}
           </div>
         </div>
         {order.phases.length > 0 && (
@@ -253,7 +268,11 @@ export default function OrdersPage() {
         <div className="card overflow-hidden">
           <button className="w-full flex items-center justify-between px-6 py-4 hover:bg-surface-50" onClick={()=>setExpandedPlans(!expandedPlans)}>
             <p className="font-semibold text-ink-900">Treatment Plans</p>
-            <span className="text-ink-400">{expandedPlans ? '▲' : '▼'}</span>
+            <span className="flex items-center gap-3">
+              {isLab && <span role="button" tabIndex={0} className="btn-primary btn-sm print:hidden" onClick={e=>{ e.stopPropagation(); setPlanModal(null) }}>
+                {order.treatment_plans.length ? 'Add Treatment Plan' : 'Create Treatment Plan'}</span>}
+              <span className="text-ink-400">{expandedPlans ? '▲' : '▼'}</span>
+            </span>
           </button>
           {expandedPlans && (
             <div className="border-t border-surface-200">
@@ -265,17 +284,25 @@ export default function OrdersPage() {
                     <th className="text-left px-5 py-3">Status</th>
                     <th className="text-left px-5 py-3">Type</th>
                     <th className="text-left px-5 py-3">Aligners</th>
+                    <th className="text-left px-5 py-3 print:hidden">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {order.treatment_plans.length===0 && <tr><td colSpan={5} className="text-center text-sm text-ink-400 py-6">No treatment plans yet</td></tr>}
+                  {order.treatment_plans.length===0 && <tr><td colSpan={6} className="text-center text-sm text-ink-400 py-6">No treatment plans yet</td></tr>}
                   {order.treatment_plans.map((tp)=>(
                     <tr key={tp.id} className="table-row">
-                      <td className="px-5 py-3 text-primary-600 font-semibold text-sm">{tp.name}</td>
+                      <td className="px-5 py-3 text-sm"><button className="text-primary-600 font-semibold hover:underline" onClick={()=>navigate(`/orders/${order.id}/treatment/${tp.id}`)}>{tp.name}</button></td>
                       <td className="px-5 py-3 text-sm text-ink-600">{fmtDateTime(tp.created_at)}</td>
-                      <td className="px-5 py-3"><span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700">{tp.status}</span></td>
-                      <td className="px-5 py-3"><span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-primary-50 text-primary-700">{tp.type}</span></td>
-                      <td className="px-5 py-3 text-sm text-ink-700">Total: {tp.total} | Issued: {tp.issued}</td>
+                      <td className="px-5 py-3"><span className={cn('px-2.5 py-1 rounded-full text-xs font-semibold', PLAN_STATUS[tp.status]?.className ?? 'bg-surface-100 text-ink-600')}>{PLAN_STATUS[tp.status]?.label ?? tp.status}</span></td>
+                      <td className="px-5 py-3"><span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-primary-50 text-primary-700">{PLAN_TYPE[tp.type] ?? tp.type}</span></td>
+                      <td className="px-5 py-3 text-sm text-ink-700">Upper {tp.aligners_upper} · Lower {tp.aligners_lower} · <span className="font-semibold">Total {tp.total}</span></td>
+                      <td className="px-5 py-3 print:hidden">
+                        <div className="flex gap-1.5">
+                          <button className="btn-secondary btn-sm gap-1" onClick={()=>navigate(`/orders/${order.id}/treatment/${tp.id}`)}><Eye size={13}/> Review Treatment</button>
+                          {isLab && <button className="btn-ghost btn-sm" onClick={()=>setPlanModal(tp)}>Configure</button>}
+                          {isLab && <button className="btn-ghost btn-sm text-red-500" onClick={()=>setDeletingPlan(tp)}>Delete</button>}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -285,6 +312,20 @@ export default function OrdersPage() {
               </div>
             </div>
           )}
+          {planModal !== undefined && (
+            <TreatmentPlanModal open orderId={order.id} plan={planModal} onClose={()=>setPlanModal(undefined)}
+              onSaved={id=>{ if (planModal === null) navigate(`/orders/${order.id}/treatment/${id}`) }}/>
+          )}
+          <Modal open={!!deletingPlan} onClose={()=>setDeletingPlan(null)} title={`Do you want to delete '${deletingPlan?.name}'?`} size="sm"
+            footer={<><button className="btn-secondary btn-sm" onClick={()=>setDeletingPlan(null)}>Cancel</button>
+              <button className="btn-primary btn-sm bg-red-600 hover:bg-red-700" onClick={async()=>{
+                const name = deletingPlan!.name
+                try { await deletePlan.mutateAsync(deletingPlan!.id); toast.success(`Treatment plan '${name}' deleted successfully.`) }
+                catch { toast.error('Could not delete the plan') }
+                setDeletingPlan(null)
+              }}>Delete</button></>}>
+            <p className="text-sm text-ink-600">The treatment plan '{deletingPlan?.name}' and all related files will be permanently deleted. The order status will remain unchanged, regardless of this treatment plan's status. This action cannot be undone.</p>
+          </Modal>
         </div>
         <div className="card overflow-hidden">
           <button className="w-full flex items-center justify-between px-6 py-4 hover:bg-surface-50" onClick={()=>setExpandedObs(!expandedObs)}>

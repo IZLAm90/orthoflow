@@ -12,6 +12,7 @@ import LabPage from './pages/Lab'
 import AnalyticsPage from './pages/Analytics'
 import ProductsPage from './pages/Products'
 import OrderForm from './pages/OrderForm'
+import TreatmentPlanPage from './pages/TreatmentPlan'
 import OrdersPage from './pages/Orders'
 import InvoicesPage from './pages/Invoices'
 import UsersPage from './pages/Users'
@@ -43,6 +44,7 @@ export default function App(){
           <Route path="products" element={<ProductsPage/>}/>
           <Route path="products/:id" element={<OrderForm/>}/>
           <Route path="orders" element={<OrdersPage/>}/>
+          <Route path="orders/:orderId/treatment/:planId" element={<TreatmentPlanPage/>}/>
           <Route path="invoices" element={<InvoicesPage/>}/>
           <Route path="users" element={<UsersPage/>}/>
           <Route path="calendar" element={<CalendarPage/>}/>
